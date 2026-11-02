@@ -155,14 +155,14 @@ python -m pip install ./evaluate
 
 # Stage 1: start with QA and source videos; generate frames.
 python -m SinglePointEvalOpen.legacy_compatible_runner \
-  --drama kuang_biao --question_path DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --drama the_knockout --question_path DramaVQA/Bench_Data_mini_2000/the_knockout.json \
   --video_path data/drama_bench_data --image_path runs/legacy/images \
   --sample_frames 8 --level L2 --model_name my-vl-model \
   --serving_mode local --only_gen_img --limit 10
 
 # Stage 2: start an OpenAI-compatible model server, then evaluate.
 python -m SinglePointEvalOpen.legacy_compatible_runner \
-  --drama kuang_biao --question_path DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --drama the_knockout --question_path DramaVQA/Bench_Data_mini_2000/the_knockout.json \
   --image_path runs/legacy/images --result_path runs/legacy/results \
   --sample_frames 8 --level L2 --model_name my-vl-model \
   --serving_mode local --port 8000 --use_render_info --limit 10
@@ -175,7 +175,10 @@ stages must use the same frame count, rendering mode, and image path.
 The video layout is `data/drama_bench_data/<drama>/video_data/<version>/0001.mkv`
 (or `.mp4`), with `video_data/version.json` selecting the active version;
 if `version.json` is absent, the reader selects an available subdirectory.
-Seasonal dramas can use the named season directories in `DRAMA_NAME_MAP`.
+Every drama uses one directory named after its QA JSON stem. English-language
+dramas use continuous episode numbering across seasons: after `0008` comes
+`0009`, including videos, face/subtitle metadata, and speaker metadata.
+Season-specific directories such as `breaking_bad_1/` are no longer used.
 `face_data` and `subtitle_data` are optional for a basic run, but are needed
 to reproduce face-box and subtitle rendering from the benchmark dataset.
 When using pre-rendered face videos, select `--use_rendered_video` in stage 1.
@@ -210,7 +213,7 @@ current QA is `clip -> Q&A list`. Convert the input without editing Conan:
 
 ```bash
 python -m SinglePointEvalOpen.conan_qa_adapter \
-  DramaVQA/Bench_Data_mini_2000/kuang_biao.json /path/to/conan_qa/kuang_biao.json
+  DramaVQA/Bench_Data_mini_2000/the_knockout.json /path/to/conan_qa/the_knockout.json
 ```
 
 The converter preserves each question and its L2--L5 windows. The model's
@@ -225,13 +228,13 @@ model weights supplied through `--conan-eval` and `--model-path`.
 
 ```bash
 python -m SinglePointEvalOpen.conan_runner \
-  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json \
   --image-root runs/legacy/images \
   --output-root runs/legacy/conan_results \
   --conan-eval /path/to/models/Conan/Conan-Eval \
   --model-path /path/to/models/Conan/Conan-7B \
   --python /path/to/conda/Conan/bin/python \
-  --drama kuang_biao --level L2 --sample-frames 8 \
+  --drama the_knockout --level L2 --sample-frames 8 \
   --image-subdir results.w392_nosub --gpu-ids 0 --num-processes 1
 ```
 

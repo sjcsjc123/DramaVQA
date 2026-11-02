@@ -15,7 +15,19 @@ script entry point. Stale gallery error messages now point to the public CLI.
 No prompt text, answer extraction rules or scoring rules are changed by this
 standalone export.
 
-## Repository question paths (unreleased)
+## Updated question data and merged media directories (unreleased)
+
+Replace all 51 question files with the supplied updated annotations and English
+drama identifiers. All media folders now match QA filename stems. English-language
+series use one directory per drama and continuous episode numbers across seasons;
+no season offset is inferred. Update single-point, ablation, offline preparation,
+speaker metadata lookup, Conan defaults, and documentation accordingly.
+
+Validation: 72 automated tests, including synthetic extraction from episode 9 and
+scene ordering across episodes 8 and 9; all 51 QA files (113,136 questions) validate.
+Real media merging and model inference are outside this change.
+
+## Repository question paths
 
 Question annotations live in the GitHub checkout's `DramaVQA/` directory.
 The unified CLI can discover that directory or accept `--data-root`, then select

@@ -112,37 +112,38 @@ replace_names ={'Robert Crawley Earl of Grantham':'Robert Crawley',
 
 
 DRAMA_CAP_MAP = {
-    'chen_mo_de_zhen_xiang': 'chen_mo_de_zhen_xiang_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20260216.json',
-    'huan_le_song': 'huan_le_song_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251028.json',
-    'shan_hai_qing': 'shan_hai_qing_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251101.json',
-    'da_qin_di_guo': 'da_qin_di_guo_zhi_zong_heng_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251230.json',
-    'kuang_biao': 'kuang_biao_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251030.json',
-    'yi_qi_tong_guo_chuang_1': 'yi_qi_tong_guo_chuang_1_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251230.json',
+    'the_long_night': 'chen_mo_de_zhen_xiang_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20260216.json',
+    'ode_to_joy_1': 'huan_le_song_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251028.json',
+    'minning_town': 'shan_hai_qing_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251101.json',
+    'qin_empire_2': 'da_qin_di_guo_zhi_zong_heng_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251230.json',
+    'the_knockout': 'kuang_biao_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251030.json',
+    'stand_by_me_1': 'yi_qi_tong_guo_chuang_1_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251230.json',
     'downton_abbey': 'downton_abbey_hierarchical_caption_Hiera_0202_3API_briefadaptlength_20260216.json',
-    'ren_shi_jian': 'ren_shi_jian_hierarchical_caption_Hiera_1023_3API_briefadaptlength_20251028.json',
-    'zhan_chang_sha': 'zhan_chang_sha_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251230.json',
+    'a_lifelong_journey': 'ren_shi_jian_hierarchical_caption_Hiera_1023_3API_briefadaptlength_20251028.json',
+    'battle_of_changsha': 'zhan_chang_sha_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251230.json',
     'friends': 'friends_hierarchical_caption_Hiera_0205_3API_briefadaptlength_20260205.json',
-    'san_ti': 'san_ti_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20260331.json',
-    'zhen_huan_zhuan': 'zhen_huan_zhuan_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251028.json',
+    'three_body': 'san_ti_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20260331.json',
+    'empresses_in_the_palace': 'zhen_huan_zhuan_hierarchical_caption_Hiera_1027_3API_briefadaptlength_20251028.json',
     'lost': 'lost_hierarchical_caption_Hiera_0205_3API_briefadaptlength_20260210.json'
 }
 
+# One media directory per drama; episode numbers continue across seasons.
 DRAMA_NAME_MAP = {
-    'chen_mo_de_zhen_xiang': ['chen_mo_de_zhen_xiang'],
-    'huan_le_song': ['huan_le_song'],
-    'shan_hai_qing': ['shan_hai_qing'],
-    'da_qin_di_guo': ['da_qin_di_guo_zhi_zong_heng'],
-    'kuang_biao': ['kuang_biao'],
-    'yi_qi_tong_guo_chuang_1': ['yi_qi_tong_guo_chuang_1'],
-    'downton_abbey': ['downton_abbey_1', 'downton_abbey_2','downton_abbey_3','downton_abbey_4','downton_abbey_5','downton_abbey_6'],
-    'ren_shi_jian': ['ren_shi_jian'],
-    'zhan_chang_sha': ['zhan_chang_sha'],
-    'friends': ['friends_1', 'friends_2','friends_3','friends_4','friends_5','friends_6','friends_7','friends_8','friends_9','friends_10'],
-    'san_ti': ['san_ti'],
-    'zhen_huan_zhuan': ['zhen_huan_zhuan'],
-    'lost': ['lost_1','lost_2','lost_3','lost_4','lost_5','lost_6'],
-    'breaking_bad': ['breaking_bad_1','breaking_bad_2','breaking_bad_3','breaking_bad_4','breaking_bad_5'],
-    'prison_break': ['prison_break_1','prison_break_2','prison_break_3','prison_break_4','prison_break_5']
+    'the_long_night': ['the_long_night'],
+    'ode_to_joy_1': ['ode_to_joy_1'],
+    'minning_town': ['minning_town'],
+    'qin_empire_2': ['qin_empire_2'],
+    'the_knockout': ['the_knockout'],
+    'stand_by_me_1': ['stand_by_me_1'],
+    'downton_abbey': ['downton_abbey'],
+    'a_lifelong_journey': ['a_lifelong_journey'],
+    'battle_of_changsha': ['battle_of_changsha'],
+    'friends': ['friends'],
+    'three_body': ['three_body'],
+    'empresses_in_the_palace': ['empresses_in_the_palace'],
+    'lost': ['lost'],
+    'breaking_bad': ['breaking_bad'],
+    'prison_break': ['prison_break'],
 }
 
 
@@ -1350,7 +1351,7 @@ class LLMInference:
                     if sub_text:
                         msg[1]["content"].append(
                             {"type": "text", "text": f"字幕: {sub_text}"})
-                # if self.drama in ['kuang_biao', 'lost']:
+                # if self.drama in ['the_knockout', 'lost']:
                 #     text_info = ""
                 #     if isinstance(frame_names[idx], list):
                 #         for sub_idx, sub_frame_name in enumerate(frame_names[idx]):
@@ -2009,7 +2010,7 @@ class LLMInference:
                     msg[1]["content"].append(
                         {"type": "text", "text": f"字幕: {sub_text}"})
 
-            # if self.drama in ['kuang_biao', 'lost']:
+            # if self.drama in ['the_knockout', 'lost']:
             #     text_info = ""
             #     if isinstance(frame_names[idx], list):
             #         for sub_idx, sub_frame_name in enumerate(frame_names[idx]):
@@ -3528,7 +3529,7 @@ def main(args):
                          help='Another example parameter')
     parser.add_argument('--drama',
                          type=str,
-                         default='ren_shi_jian',
+                         default='a_lifelong_journey',
                          help='Another example parameter')
     parser.add_argument('--model_name',
                         type=str,

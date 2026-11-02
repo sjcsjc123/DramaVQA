@@ -12,13 +12,13 @@ import pytest
 from SinglePointEvalOpen import legacy_compatible_runner as compatibility
 
 
-def test_from_empty_video_to_compatibility_input(tmp_path):
+@pytest.mark.parametrize("drama,episode", [("sample_drama", 1), ("breaking_bad", 9)])
+def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode):
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         pytest.skip("ffmpeg and ffprobe are required for source-video extraction")
     pytest.importorskip("cv2")
     pytest.importorskip("tqdm")
 
-    drama = "sample_drama"
     video_dir = tmp_path / "videos" / drama / "video_data" / "v1"
     video_dir.mkdir(parents=True)
     (video_dir.parent / "version.json").write_text(
@@ -27,13 +27,13 @@ def test_from_empty_video_to_compatibility_input(tmp_path):
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
          "testsrc=size=64x64:rate=25:duration=2", "-c:v", "ffv1",
-         str(video_dir / "0001.mkv")],
+         str(video_dir / f"{episode:04d}.mkv")],
         check=True,
     )
 
-    window = "0001-00:00:00.000_0001-00:00:01.960"
+    window = f"{episode:04d}-00:00:00.000_{episode:04d}-00:00:01.960"
     clip = {f"L{level}_time": window for level in range(2, 6)}
-    clip.update({f"L{level}_frame": "0001-00000_0001-00049"
+    clip.update({f"L{level}_frame": f"{episode:04d}-00000_{episode:04d}-00049"
                  for level in range(2, 6)})
     clip["Q&A"] = [
         {"Question": f"What is visible in question {index}?",

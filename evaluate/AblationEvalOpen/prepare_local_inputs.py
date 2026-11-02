@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-DRAMAS = ['chen_mo_de_zhen_xiang', 'huan_le_song', 'shan_hai_qing', 'da_qin_di_guo',
-          'kuang_biao', 'yi_qi_tong_guo_chuang_1', 'san_ti', 'zhan_chang_sha',
+DRAMAS = ['the_long_night', 'ode_to_joy_1', 'minning_town', 'qin_empire_2',
+          'the_knockout', 'stand_by_me_1', 'three_body', 'battle_of_changsha',
           'friends', 'lost', 'breaking_bad', 'prison_break']
 
 
@@ -32,8 +32,12 @@ def engine_for(args, drama, level, frames, qa):
 
 def times_for(qa, level):
     data = json.loads(qa.read_text())
-    return sorted({clip[level + '_time'] for category in ('low-level', 'high-level', 'multi-point')
-                   for clip in data.get(category, {}).values() if clip.get(level + '_time')})
+    if any('Q&A' in clip for clip in data.values() if isinstance(clip, dict)):
+        clips = data.values()
+    else:
+        clips = (clip for category in ('low-level', 'high-level', 'multi-point')
+                 for clip in data.get(category, {}).values())
+    return sorted({clip[level + '_time'] for clip in clips if clip.get(level + '_time')})
 
 
 def copy_checked(src, dst):
@@ -84,7 +88,7 @@ def main():
     for level in args.levels.replace(',', ' ').split():
         for frames in map(int, args.frames.replace(',', ' ').split()):
             for drama in args.dramas.replace(',', ' ').split():
-                filename = 'da_qin_di_guo_zhi_zong_heng' if drama == 'da_qin_di_guo' else drama
+                filename = drama
                 qa = Path(args.qa_root) / (filename + '.json')
                 if not qa.is_file():
                     raise FileNotFoundError('Missing QA (refusing partial coverage): ' + str(qa))

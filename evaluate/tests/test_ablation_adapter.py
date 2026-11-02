@@ -49,3 +49,18 @@ def test_gallery_cache_import_works_as_installed_package(monkeypatch, tmp_path):
     monkeypatch.setattr(gallery_cache, "identity", lambda *args: {"sample": True})
     monkeypatch.setattr(gallery_cache, "load", lambda *args: expected)
     assert engine._get_gallery_clip("sample-window") is expected
+
+
+def test_offline_preparation_reads_current_flat_windows(tmp_path):
+    from AblationEvalOpen.prepare_local_inputs import times_for
+    path = tmp_path / "breaking_bad.json"
+    window = "0008-00:00:00.000_0009-00:00:01.000"
+    path.write_text(json.dumps({"clip": {"L3_time": window, "Q&A": []}}))
+    assert times_for(path, "L3") == [window]
+
+
+def test_speaker_metadata_uses_continuous_episode_in_drama_directory():
+    from AblationEvalOpen.ask_vllm import LLMInference
+    engine = LLMInference.__new__(LLMInference)
+    engine.drama = "breaking_bad"
+    assert engine._speaker_episode("9_123.jpg") == ("breaking_bad", "0009", 123)
