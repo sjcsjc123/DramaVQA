@@ -2,7 +2,7 @@
 
 **DramaVQA: Probing Detailed Understanding of Ultra-Long TV Dramas**
 
-[Project](https://github.com/xinyuehuo/DramaVQA) | [Videos & Metadata](https://huggingface.co/datasets/198808xc/drama_bench_data) | [Question Data](DramaVQA/) | [Evaluation](evaluation/) | [License](LICENSE)
+[Project](https://github.com/xinyuehuo/DramaVQA) | [Videos & Metadata](https://huggingface.co/datasets/198808xc/drama_bench_data) | [Question Data](DramaVQA/) | [Evaluation](evaluate/) | [License](LICENSE)
 
 DramaVQA is a video question answering benchmark for evaluating detailed understanding of TV dramas over extended temporal contexts. It challenges multimodal models to locate visual evidence, recognize characters and events, and reason over narratives that span many episodes.
 
@@ -19,14 +19,14 @@ Key features include:
 
 ### Evaluation tracks
 
-| Track | Temporal level | Average input duration |
-| --- | --- | --- |
-| Medium | L3 | 7.6 minutes |
-| Long | L4 | 43.1 minutes |
-| Extra-Long | L5 | 9.3 hours |
-| Ultra-Long | L6, full drama | 38.9 hours |
+| Track | Average input duration |
+| --- | --- |
+| Medium | 7.6 minutes |
+| Long | 43.1 minutes |
+| Extra-Long | 9.3 hours |
+| Ultra-Long (full drama) | 38.9 hours |
 
-The tracks vary the amount of video context available for answering a question; they do not represent four separate collections of 20,000 questions.
+The tracks vary the amount of video context available for answering a question; they do not represent four separate collections of 20,000 questions. The released evaluator selects the time windows stored in the question annotations using `--level L2`, `L3`, `L4`, or `L5`. Use these annotation keys when running the CLI; `L6` is not an accepted CLI value.
 
 ### Question categories
 
@@ -78,54 +78,158 @@ The training set contains `downton_abbey.json` (*Downton Abbey*), `ren_shi_jian.
 
 Use the question annotations from this repository together with the corresponding videos and metadata from Hugging Face for evaluation or training.
 
-### Download
+### Download videos and metadata
 
-Install the Hugging Face CLI:
+Question annotations and evaluation code are included when you clone this repository:
+
+```bash
+git clone https://github.com/xinyuehuo/DramaVQA.git
+cd DramaVQA
+```
+
+Install the Hugging Face CLI, then download the videos and metadata for the drama you want to evaluate. The commands below run from the repository root and use *The Knockout* (`kuang_biao`) throughout:
 
 ```bash
 python -m pip install --upgrade huggingface_hub
+hf download 198808xc/drama_bench_data --repo-type dataset \
+  --include "kuang_biao/*" --local-dir data/drama_bench_data
 ```
 
-From the project root, download the videos and metadata you need. For example, download the subtitle metadata for *The Long Night*:
+Replace the include pattern for another drama or season. To download the complete media repository, omit `--include`. Video downloads can be large; download every episode required by the selected context windows, including intermediate episodes for contexts that span multiple episodes.
 
-```bash
-hf download 198808xc/drama_bench_data --repo-type dataset --include "chen_mo_de_zhen_xiang/subtitle_data/*" --local-dir data/drama_bench_data
+The evaluator expects a media root containing drama directories with versioned media and metadata:
+
+```text
+data/drama_bench_data/<drama>/
+├── video_data/
+│   ├── version.json
+│   └── <active-version>/0001.mp4
+├── face_data/
+│   ├── version.json
+│   └── <active-version>/0001.json
+└── subtitle_data/
+    ├── version.json
+    └── <active-version>/0001.json
 ```
 
-Replace the include pattern with another drama or data directory as needed. You can append `--dry-run` to preview matching files and download sizes.
-
-To download all files:
-
-```bash
-hf download 198808xc/drama_bench_data --repo-type dataset --local-dir data/drama_bench_data
-```
-
-The full repository includes video files and requires substantial disk space; selective downloads are recommended. See the [Hugging Face CLI documentation](https://huggingface.co/docs/huggingface_hub/guides/cli#hf-download) for download options.
+`--video-root` points to the parent of the drama directories. Face and subtitle metadata support the benchmark's annotated visual inputs and text subtitles. See [source data and rendering](evaluate/README.md#source-data-and-rendering) for version selection, seasonal drama mappings, and pre-rendered videos.
 
 ## Evaluation
 
-The [`evaluation/`](evaluation/) directory is reserved for the DramaVQA evaluation code. **This repository currently includes evaluation documentation; executable evaluation scripts are not yet included.** See [`evaluation/README.md`](evaluation/README.md) for the protocol and intended scope.
+The [`evaluate/`](evaluate/) directory contains the runnable evaluation package. Its public `dramavqa` CLI provides three stages: **validate question annotations**, **prepare model inputs**, and **run evaluation**.
 
-The protocol described in the paper evaluates single-choice QA accuracy separately on the Medium, Long, Extra-Long, and Ultra-Long tracks. Models return one option label, such as `[A]`. Inference time is reported alongside accuracy, including video captioning costs for retrieval-based and agentic methods.
+### Supported tasks
 
-## File Structure
+| Task | CLI argument | Question input | Context |
+| --- | --- | --- | --- |
+| Single-point | `--task single-point` | `DramaVQA/Bench_Data/` or `DramaVQA/Bench_Data_mini_2000/` | `L2`–`L5` |
+| Multi-point | `--task multi-point` | `DramaVQA/Multi-Point/` | `L3` |
+| Multi-hop | `--task multi-hop` | `DramaVQA/Multi-Hop/` | `L3` |
+| Paired source questions | `--task source-q1` or `--task source-q2` | The same `DramaVQA/Multi-Hop/` JSON | The same two `L3` scenes |
+| Single-point ablations | `--task ablation --mode MODE` | Single-point JSON | `L2`–`L5` |
+
+Single-point evaluation also accepts the training JSON format. Multi-point and multi-hop evaluation use text subtitles and preserve chronological scene ordering. Paired-source modes evaluate each source question within its pair; their results are per pair, rather than a deduplicated source-question metric.
+
+### Installation
+
+The evaluation client requires **Linux, Python 3.10+, FFmpeg/ffprobe**, and access to a compatible model service. From the repository root:
+
+```bash
+python -m pip install ./evaluate
+python -m dramavqa --help
+```
+
+`dramavqa` and `python -m dramavqa` are equivalent. The default backend calls an OpenAI-compatible model API. Set `OPENAI_API_KEY` in your environment if the service requires authentication; use `OPENAI_BASE_URL` or `--base-url` for its endpoint. Set `EVAL_FONT_PATH` to a Chinese-capable font for rendering Chinese labels and subtitles.
+
+### Quick start: single-point evaluation
+
+The following Bash commands run from the repository root. They select ten questions from the Mini subset and sample eight frames per context window for a quick check. Replace the model ID and endpoint with your own service.
+
+```bash
+# 1. Validate question annotations without calling a model.
+python -m dramavqa validate --task single-point \
+  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --drama kuang_biao --limit 10
+
+# 2. Prepare frames and subtitle inputs from the downloaded media.
+python -m dramavqa prepare --task single-point \
+  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --drama kuang_biao --limit 10 --level L2 --sample-frames 8 \
+  --video-root data/drama_bench_data \
+  --output-dir runs/single-point/kuang_biao
+
+# 3. Evaluate the prepared inputs.
+python -m dramavqa run --task single-point \
+  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --drama kuang_biao --limit 10 --level L2 --sample-frames 8 \
+  --output-dir runs/single-point/kuang_biao \
+  --model my-model --base-url http://127.0.0.1:8000/v1
+```
+
+Use identical QA input, question limit, level, frame count, and subtitle settings for `prepare` and `run`. `--limit` counts questions, not clips; `--limit 0` selects all questions. Selection follows file order. Eight frames are for quick checks; explicitly configure the frame count and context required by your experiment for benchmark results.
+
+### Multi-point and multi-hop evaluation
+
+Use the same three-stage workflow with the corresponding task, QA path, and `--level L3`. For example:
+
+```bash
+python -m dramavqa validate --task multi-hop \
+  --qa DramaVQA/Multi-Hop/kuang_biao.json --drama kuang_biao --limit 10
+
+python -m dramavqa prepare --task multi-hop \
+  --qa DramaVQA/Multi-Hop/kuang_biao.json \
+  --drama kuang_biao --limit 10 --level L3 --sample-frames 8 \
+  --video-root data/drama_bench_data \
+  --output-dir runs/multi-hop/kuang_biao
+
+python -m dramavqa run --task multi-hop \
+  --qa DramaVQA/Multi-Hop/kuang_biao.json \
+  --drama kuang_biao --limit 10 --level L3 --sample-frames 8 \
+  --output-dir runs/multi-hop/kuang_biao \
+  --model my-model --base-url http://127.0.0.1:8000/v1
+```
+
+For multi-point evaluation, replace `multi-hop` with `multi-point`, use `DramaVQA/Multi-Point/kuang_biao.json`, and choose a separate output directory.
+
+### Results and additional options
+
+Each run directory contains selected annotations under `inputs/`, generated frames under `images/`, and evaluator outputs under `results/`. Input and run manifests record the configuration and prevent reuse with different inputs or model settings. Compatible runs can resume in the same directory.
+
+`frames_summary.json` reports preparation completeness. After evaluation, `summary.json` reports expected, recorded, valid, matched, guessed, and truncated answers, together with a `complete` flag. Missing, skipped, randomly guessed, or truncated answers cause the CLI to exit nonzero. A completed but incorrect model answer still counts as completed inference; consult the evaluator results for accuracy and timing.
+
+The package also provides:
+
+- **Six ablations:** burned subtitles, text subtitles, face galleries, speaker labels, no subtitles, and language-only inputs. See [ablation modes](evaluate/README.md#ablations).
+- **Prompt reasoning options:** `--thinking on` or `off` for API single-point and ablation evaluation. See [prompt and thinking settings](evaluate/README.md#full-prompt-and-thinking).
+- **An optional Conan backend:** single-point evaluation through an external compatible Conan-Eval checkout and model checkpoint. See [Conan setup](evaluate/README.md#conan-backend).
+
+For full instructions, see the [evaluation README](evaluate/README.md), [advanced commands](evaluate/docs/ADVANCED.md), and [comparison with historical evaluators](evaluate/COMPARISON.md).
+
+## Repository Structure
 
 ```text
 DramaVQA/
-├── README.md                 # Project overview, dataset access, and evaluation information
-├── LICENSE                   # MIT License for repository code and documentation
-├── .gitignore                # Excludes local data and generated outputs
-├── DramaVQA/                 # Question annotations stored in this repository
-│   ├── Bench_Data/           # Single-point Full set (20K questions)
-│   ├── Bench_Data_mini_2000/  # Single-point Mini subset (2K questions)
-│   ├── Multi-Point/          # Multi-point questions
-│   ├── Multi-Hop/            # Multi-hop questions
-│   └── Training_Set/         # Training questions from three additional dramas
-└── evaluation/               # Directory for evaluation code
-    └── README.md             # Evaluation protocol and implementation status
+├── README.md
+├── LICENSE
+├── DramaVQA/                     # Question annotations
+│   ├── Bench_Data/               # Full single-point benchmark
+│   ├── Bench_Data_mini_2000/     # Single-point Mini subset
+│   ├── Multi-Point/              # Multi-point questions
+│   ├── Multi-Hop/                # Multi-hop questions
+│   └── Training_Set/             # Training questions
+└── evaluate/                     # Installable evaluation package
+    ├── README.md
+    ├── pyproject.toml
+    ├── dramavqa/                 # Unified CLI and completion checks
+    ├── SinglePointEvalOpen/
+    ├── MultiPointEvalOpen/
+    ├── MultiHopEvalOpen/
+    ├── AblationEvalOpen/
+    ├── docs/
+    └── tests/
 ```
 
-The download command creates `data/drama_bench_data/` locally for Hugging Face videos and metadata. This download directory is excluded from version control; question annotations are stored in the separate `DramaVQA/` directory included in the project.
+The download and evaluation commands create local `data/` and `runs/` directories. Keep downloaded media, model checkpoints, credentials, and generated results out of commits.
 
 ## Citation
 
