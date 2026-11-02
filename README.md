@@ -168,6 +168,26 @@ python -m dramavqa run --task single-point \
 
 Use identical QA input, question limit, level, frame count, and subtitle settings for `prepare` and `run`. `--limit` counts questions, not clips; `--limit 0` selects all questions. Selection follows file order. Eight frames are for quick checks; explicitly configure the frame count and context required by your experiment for benchmark results.
 
+### Automatic question-path selection
+
+Inside this checkout, `--qa` is optional. The CLI discovers the tracked `DramaVQA/`
+question directory and selects the file for `--task`, `--drama` and `--subset`:
+
+```bash
+python -m dramavqa validate --task single-point --drama kuang_biao --limit 10
+python -m dramavqa validate --task single-point --subset Bench_Data --drama kuang_biao --limit 10
+python -m dramavqa validate --task multi-point --drama kuang_biao --limit 10
+python -m dramavqa validate --task multi-hop --drama kuang_biao --limit 10
+python -m dramavqa validate --task single-point --subset Training_Set --drama downton_abbey --limit 10
+```
+
+The default single-point/ablation subset is `Bench_Data_mini_2000`.
+Use `--data-root /path/to/DramaVQA` when running outside the checkout or using
+another question-data directory. An explicit `--qa FILE` overrides this lookup.
+These options locate question annotations only; `--video-root` still points to
+the separately downloaded videos and metadata. Use the exact JSON filename stem
+for `--drama`, for example `da_qin_di_guo_zhi_zong_heng`.
+
 ### Multi-point and multi-hop evaluation
 
 Use the same three-stage workflow with the corresponding task, QA path, and `--level L3`. For example:

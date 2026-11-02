@@ -37,11 +37,35 @@ def select_questions(data, limit):
     return selected
 
 
+def resolve_qa_path(args, group):
+    """Resolve an explicit input or the checkout's DramaVQA question directory."""
+    if args.qa is not None:
+        return args.qa
+    if args.data_root is not None:
+        root = args.data_root.expanduser().resolve()
+    else:
+        cwd = Path.cwd().resolve()
+        candidates = [parent / "DramaVQA" for parent in (cwd, *cwd.parents)]
+        candidates.append(Path(__file__).resolve().parents[2] / "DramaVQA")
+        root = next((candidate for candidate in candidates
+                     if (candidate / "Bench_Data_mini_2000").is_dir()
+                     and (candidate / "Multi-Hop").is_dir()), None)
+        if root is None:
+            raise ValueError("Cannot locate the repository's DramaVQA/ directory. "
+                             "Pass --data-root /path/to/DramaVQA or --qa FILE.")
+    path = root / group / f"{args.drama}.json"
+    if not path.is_file():
+        raise ValueError(f"Question file not found: {path}. Use the exact JSON filename "
+                         "stem for --drama, select the correct --subset, or pass --qa FILE.")
+    return path
+
+
 def load_input(args):
     group = {"multi-point": "Multi-Point", "multi-hop": "Multi-Hop",
              "source-q1": "Multi-Hop", "source-q2": "Multi-Hop"}.get(args.task, args.subset)
-    if args.qa.suffix.lower() == ".zip":
-        with ZipFile(args.qa) as archive:
+    qa_path = resolve_qa_path(args, group)
+    if qa_path.suffix.lower() == ".zip":
+        with ZipFile(qa_path) as archive:
             candidates = [n for n in archive.namelist()
                           if n == f"{group}/{args.drama}.json"
                           or n.endswith(f"/{group}/{args.drama}.json")]
@@ -49,7 +73,7 @@ def load_input(args):
                 raise ValueError(f"expected one {group}/{args.drama}.json in ZIP")
             data = json.loads(archive.read(candidates[0]))
     else:
-        data = json.loads(args.qa.read_text(encoding="utf-8"))
+        data = json.loads(qa_path.read_text(encoding="utf-8"))
     validator = (validate_qa if args.task in ("single-point", "ablation") else
                  validate_multi_point if args.task == "multi-point" else validate_multi_hop)
     source_summary = validator(data)
@@ -67,7 +91,8 @@ def build_parser():
         p = sub.add_parser(name, help={"validate": "validate QA without a model",
             "prepare": "generate model input frames", "run": "evaluate prepared inputs"}[name])
         p.add_argument("--task", choices=TASKS, required=True)
-        p.add_argument("--qa", type=Path, required=True, help="JSON or dataset ZIP")
+        p.add_argument("--qa", type=Path, help="explicit JSON or dataset ZIP; overrides --data-root")
+        p.add_argument("--data-root", type=Path, help="question-data directory containing Bench_Data, Multi-Point, etc.; default: checkout DramaVQA/")
         p.add_argument("--drama", required=True)
         p.add_argument("--subset", default="Bench_Data_mini_2000",
                        choices=("Bench_Data", "Bench_Data_mini_2000", "Training_Set"))
