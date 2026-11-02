@@ -1,0 +1,44 @@
+{
+  "42": {
+    "L2_time": "S1#0001-00:00:00.000_S1#0001-00:00:04.000",
+    "L2_frame": "S1#0001-00000_S1#0001-00100",
+    "L3_time": "S1#0001-00:00:00.000_S1#0001-00:00:08.000",
+    "L3_frame": "S1#0001-00000_S1#0001-00200",
+    "L4_time": "S1#0001-00:00:00.000_S1#0001-00:00:16.000",
+    "L4_frame": "S1#0001-00000_S1#0001-00400",
+    "L5_time": "S1#0001-00:00:00.000_S1#0002-00:00:16.000",
+    "L5_frame": "S1#0001-00000_S1#0002-00400",
+    "Q&A": [
+      {
+        "Question": "What color is the car?",
+        "Options": "A. Red\nB. Blue\nC. Green",
+        "Answer": "A",
+        "Dimension": "Object Appearance"
+      },
+      {
+        "Question": "Where is the person?",
+        "Options": "A. In a room\nB. On a bridge\nC. In a car",
+        "Answer": "C",
+        "Dimension": "Spatial Location"
+      }
+    ]
+  },
+  "99": {
+    "L2_time": "S1#0003-00:01:00.000_S1#0003-00:01:04.000",
+    "L2_frame": "S1#0003-01500_S1#0003-01600",
+    "L3_time": "S1#0003-00:01:00.000_S1#0003-00:01:08.000",
+    "L3_frame": "S1#0003-01500_S1#0003-01700",
+    "L4_time": "S1#0003-00:01:00.000_S1#0003-00:01:16.000",
+    "L4_frame": "S1#0003-01500_S1#0003-01900",
+    "L5_time": "S1#0003-00:01:00.000_S1#0003-00:01:32.000",
+    "L5_frame": "S1#0003-01500_S1#0003-02300",
+    "Q&A": [
+      {
+        "Question": "What is visible?",
+        "Options": "A. A tree\nB. A train\nC. A boat",
+        "Answer": "B",
+        "Dimension": "Object Presence"
+      }
+    ]
+  }
+}
