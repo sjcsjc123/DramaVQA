@@ -15,7 +15,22 @@ script entry point. Stale gallery error messages now point to the public CLI.
 No prompt text, answer extraction rules or scoring rules are changed by this
 standalone export.
 
-## Validation
+## Repository question paths (unreleased)
+
+Question annotations live in the GitHub checkout's `DramaVQA/` directory.
+The unified CLI can discover that directory or accept `--data-root`, then select
+the task's group and exact drama filename. Single-point and ablation default to
+Mini; full and training subsets remain explicit. `--qa` still overrides lookup
+and accepts JSON or ZIP. Media paths remain separate and explicitly configured.
+Documentation examples now run from the repository root and reference tracked
+question JSON files and the documented Hugging Face media download directory.
+
+The updated suite passes 68 tests. All 51 tracked question files (113,136
+questions) pass public CLI validation. An installed wheel resolves data from the
+repository root and `evaluate/`, and accepts explicit data roots outside the
+checkout. These checks do not load models or download media.
+
+## Standalone 0.2.4 validation
 
 The source test suite passes 52 tests in a fresh Python 3.10 virtual environment
 with system site packages disabled. Tests include generated video preparation,

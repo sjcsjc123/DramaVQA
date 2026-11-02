@@ -23,6 +23,14 @@ answer extraction, or scoring. `SingleHopEval` is the name of an old directory
 for the single-point benchmark. The paired `source_q1`/`source_q2` controls
 below are a separate task.
 
+## Paths for this GitHub checkout
+
+All examples here run from the repository root after installing `./evaluate`.
+Question JSON files live in `DramaVQA/`; video/metadata downloads are separate
+under `data/drama_bench_data/`, as described in the project README.
+The public CLI can discover question paths or accept `--data-root`; the legacy
+module commands below still require explicit input paths.
+
 ## Multi-point and multi-hop QA
 
 The supplied DramaVQA archive contains 3,200 multi-point questions (12 files) and 1,200
@@ -34,12 +42,12 @@ its paired multi-hop question. The public rows have no `q1_id` or `q2_id`, so
 these modes retain all 1,200 pairs rather than claiming the historical
 deduplicated-source metric.
 
-Run validation directly on the ZIP, without extracting it:
+Validate the tracked question files without downloading media:
 
 ```bash
-python -m pip install '.'
-python -m MultiPointEvalOpen.run_eval --qa /path/to/DramaVQA.zip --drama friends --validate-only
-python -m MultiHopEvalOpen.run_eval --qa /path/to/DramaVQA.zip --drama friends --validate-only
+python -m pip install ./evaluate
+python -m MultiPointEvalOpen.run_eval --qa DramaVQA/Multi-Point/friends.json --drama friends --validate-only
+python -m MultiHopEvalOpen.run_eval --qa DramaVQA/Multi-Hop/friends.json --drama friends --validate-only
 ```
 
 To start from source videos, the frame preparation command reuses the
@@ -50,14 +58,14 @@ layout is documented below. Set `--kind multi_hop` for the multi-hop file.
 
 ```bash
 python -m MultiPointEvalOpen.prepare_frames \
-  --qa /path/to/DramaVQA.zip --kind multi_point --drama friends \
-  --video-root /data/videos --output-root /data/work/multi_point \
+  --qa DramaVQA/Multi-Point/friends.json --kind multi_point --drama friends \
+  --video-root data/drama_bench_data --output-root runs/legacy/multi_point \
   --sample-frames 256 --target-width 392
 
 python -m MultiPointEvalOpen.run_eval \
-  --qa /path/to/DramaVQA.zip --drama friends \
-  --image-root /data/work/multi_point/images/L3/256/results.w392_nosub/img_data \
-  --output-dir /data/work/multi_point/results/friends \
+  --qa DramaVQA/Multi-Point/friends.json --drama friends \
+  --image-root runs/legacy/multi_point/images/L3/256/results.w392_nosub/img_data \
+  --output-dir runs/legacy/multi_point/results/friends \
   --model my-served-model --base-url http://localhost:8000/v1
 ```
 
@@ -67,17 +75,17 @@ each mode a distinct output directory so its historical `results.json` and
 
 ```bash
 python -m MultiPointEvalOpen.prepare_frames \
-  --qa /path/to/DramaVQA.zip --kind multi_hop --drama friends \
-  --video-root /data/videos --output-root /data/work/multi_hop
+  --qa DramaVQA/Multi-Hop/friends.json --kind multi_hop --drama friends \
+  --video-root data/drama_bench_data --output-root runs/legacy/multi_hop
 python -m MultiHopEvalOpen.run_eval \
-  --qa /path/to/DramaVQA.zip --drama friends --mode multi_hop \
-  --image-root /data/work/multi_hop/images/L3/256/results.w392_nosub/img_data \
-  --output-dir /data/work/multi_hop/results/multi_hop/friends \
+  --qa DramaVQA/Multi-Hop/friends.json --drama friends --mode multi_hop \
+  --image-root runs/legacy/multi_hop/images/L3/256/results.w392_nosub/img_data \
+  --output-dir runs/legacy/multi_hop/results/multi_hop/friends \
   --model my-served-model
 python -m MultiHopEvalOpen.run_eval \
-  --qa /path/to/DramaVQA.zip --drama friends --mode source_q2 \
-  --image-root /data/work/multi_hop/images/L3/256/results.w392_nosub/img_data \
-  --output-dir /data/work/multi_hop/results/source_q2/friends \
+  --qa DramaVQA/Multi-Hop/friends.json --drama friends --mode source_q2 \
+  --image-root runs/legacy/multi_hop/images/L3/256/results.w392_nosub/img_data \
+  --output-dir runs/legacy/multi_hop/results/source_q2/friends \
   --model my-served-model
 ```
 
@@ -99,9 +107,9 @@ hard-coded credentials; use a local model server and pass its served name.
 
 ```bash
 python -m AblationEvalOpen.run_eval \
-  --qa /path/to/DramaVQA.zip --drama friends --mode exp2_nosub \
-  --video-root /data/videos --image-path /data/work/images/L3/256/results.w392_nosub/img_data/friends \
-  --output-root /data/work/ablation --model my-served-model --port 8000 \
+  --qa DramaVQA/Bench_Data_mini_2000/friends.json --drama friends --mode exp2_nosub \
+  --video-root data/drama_bench_data --image-path runs/legacy/images/L3/256/results.w392_nosub/img_data/friends \
+  --output-root runs/legacy/ablation --model my-served-model --port 8000 \
   --sample-frames 256 --use-render-info
 ```
 
@@ -113,9 +121,9 @@ evaluation command to write the adapted QA, then prepare its cache:
 
 ```bash
 python -m AblationEvalOpen.prepare_local_inputs prepare-gallery \
-  --qa-root /data/work/ablation/inputs/ablation_qa \
-  --video-root /data/videos \
-  --gallery-root /data/work/ablation/gallery_cache \
+  --qa-root runs/legacy/ablation/inputs/ablation_qa \
+  --video-root data/drama_bench_data \
+  --gallery-root runs/legacy/ablation/gallery_cache \
   --dramas friends --levels L3 --frames 256 --width 392
 ```
 
@@ -143,19 +151,19 @@ inference, answer extraction, scoring, and output format. Install the package
 and run frame generation followed by inference:
 
 ```bash
-python -m pip install '.'
+python -m pip install ./evaluate
 
 # Stage 1: start with QA and source videos; generate frames.
 python -m SinglePointEvalOpen.legacy_compatible_runner \
-  --drama kuang_biao --question_path /data/qa/kuang_biao.json \
-  --video_path /data/videos --image_path /data/work/images \
+  --drama kuang_biao --question_path DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --video_path data/drama_bench_data --image_path runs/legacy/images \
   --sample_frames 8 --level L2 --model_name my-vl-model \
   --serving_mode local --only_gen_img --limit 10
 
 # Stage 2: start an OpenAI-compatible model server, then evaluate.
 python -m SinglePointEvalOpen.legacy_compatible_runner \
-  --drama kuang_biao --question_path /data/qa/kuang_biao.json \
-  --image_path /data/work/images --result_path /data/work/results \
+  --drama kuang_biao --question_path DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --image_path runs/legacy/images --result_path runs/legacy/results \
   --sample_frames 8 --level L2 --model_name my-vl-model \
   --serving_mode local --port 8000 --use_render_info --limit 10
 ```
@@ -164,7 +172,7 @@ python -m SinglePointEvalOpen.legacy_compatible_runner \
 uses the historical `q_a_dict.json` and `raw_responses.jsonl` layout. The two
 stages must use the same frame count, rendering mode, and image path.
 
-The video layout is `/data/videos/<drama>/video_data/<version>/0001.mkv`
+The video layout is `data/drama_bench_data/<drama>/video_data/<version>/0001.mkv`
 (or `.mp4`), with `video_data/version.json` selecting the active version;
 if `version.json` is absent, the reader selects an available subdirectory.
 Seasonal dramas can use the named season directories in `DRAMA_NAME_MAP`.
@@ -190,8 +198,8 @@ a system DejaVu font is used only as a portability fallback.
 Install optional test dependencies and run:
 
 ```bash
-python -m pip install '.[test]'
-python -m pytest -q tests
+python -m pip install './evaluate[test]'
+python -m pytest -q evaluate/tests
 ```
 
 The FFmpeg fallback seeks by frame index divided by FPS. For variable-frame-rate
@@ -202,7 +210,7 @@ current QA is `clip -> Q&A list`. Convert the input without editing Conan:
 
 ```bash
 python -m SinglePointEvalOpen.conan_qa_adapter \
-  /path/to/current/kuang_biao.json /path/to/conan_qa/kuang_biao.json
+  DramaVQA/Bench_Data_mini_2000/kuang_biao.json /path/to/conan_qa/kuang_biao.json
 ```
 
 The converter preserves each question and its L2--L5 windows. The model's
@@ -217,9 +225,9 @@ model weights supplied through `--conan-eval` and `--model-path`.
 
 ```bash
 python -m SinglePointEvalOpen.conan_runner \
-  --qa /data/qa/kuang_biao.json \
-  --image-root /data/work/images \
-  --output-root /data/work/conan_results \
+  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
+  --image-root runs/legacy/images \
+  --output-root runs/legacy/conan_results \
   --conan-eval /path/to/models/Conan/Conan-Eval \
   --model-path /path/to/models/Conan/Conan-7B \
   --python /path/to/conda/Conan/bin/python \

@@ -10,34 +10,76 @@ for new runs; the historical Python modules remain available for compatibility.
 This repository is an independently installable evaluation client. It contains
 all four evaluation task packages, the common CLI, synthetic test fixtures and
 documentation. It does not require the original workspace or deployment scripts.
-A model service, benchmark data, source media and a Chinese-capable rendering
-font must be supplied separately. The optional Conan backend also requires a
+Question annotations are available in the sibling `DramaVQA/` directory of this
+GitHub repository. Download source media and metadata separately as described in
+the [project README](../README.md#data). A model service and a Chinese-capable
+rendering font must also be supplied. The optional Conan backend also requires a
 compatible external Conan-Eval checkout and checkpoint.
 
 The `evaluate/` directory contains `pyproject.toml`, `dramavqa/`, the four
-`*EvalOpen/` packages, `tests/` and `docs/`. No datasets, videos, checkpoints,
+`*EvalOpen/` packages, `tests/` and `docs/`. Question data are kept in the
+sibling `DramaVQA/` directory, not in the Python package. No videos, checkpoints,
 private configuration, runtime environments or experiment outputs are bundled.
 The `legacy` install extra is retained as an empty compatibility alias; standard
 evaluation dependencies are now installed by default.
 
 ## Install
 
-Requires Linux, Python 3.10+, FFmpeg/ffprobe and a model server. Install from the
-`evaluate/` directory:
+Requires Linux, Python 3.10+, FFmpeg/ffprobe and a model server for inference.
+All command examples below run from the **GitHub repository root**:
 
 ```bash
-# From the repository root:
-cd evaluate
-python -m pip install '.[test]'
+python -m pip install './evaluate[test]'
 python -m dramavqa --help
-python -m pytest -q tests
+python -m pytest -q evaluate/tests
 ```
+
+If distributing `evaluate/` alone, install with `python -m pip install '.[test]'`
+inside that directory, and supply `--data-root` or `--qa` for your question data.
 
 `dramavqa` and `python -m dramavqa` are equivalent. All public arguments use
 hyphens. API credentials come from `OPENAI_API_KEY`; never put them in scripts,
 configuration committed to Git, or command arguments. `OPENAI_BASE_URL` sets
 the default endpoint; `--base-url` overrides it. Standard proxy and CA environment
 variables are respected.
+
+## Question data in this repository
+
+```text
+DramaVQA/                       # GitHub repository root
+├── DramaVQA/                   # Question-data root (--data-root)
+│   ├── Bench_Data/              # Full single-point questions
+│   ├── Bench_Data_mini_2000/    # Default single-point/ablation subset
+│   ├── Multi-Point/             # Multi-point questions
+│   ├── Multi-Hop/               # Multi-hop and paired-source questions
+│   └── Training_Set/            # Training questions from three other dramas
+├── evaluate/                   # This Python package
+└── data/drama_bench_data/       # Separately downloaded videos and metadata
+```
+
+The CLI accepts three ways to locate question data:
+
+- Omit `--qa` and `--data-root` inside the checkout: discover `DramaVQA/` from
+  the current directory or its parents, with a source-checkout fallback.
+- Pass `--data-root /path/to/DramaVQA`: select `<group>/<drama>.json` there.
+  This is the question directory containing the five groups, not the media root.
+- Pass `--qa FILE`: use that exact JSON or ZIP instead. Explicit `--qa` takes
+  precedence over `--data-root`; existing JSON/ZIP commands remain supported.
+
+Single-point and ablation default to `--subset Bench_Data_mini_2000`.
+Use `--subset Bench_Data` for the full benchmark, or `--subset Training_Set`
+with `--drama downton_abbey`, `ren_shi_jian` or `zhen_huan_zhuan` for training.
+Multi-point selects `Multi-Point`; multi-hop and both sources select `Multi-Hop`.
+`--drama` must match the JSON filename stem, including
+`da_qin_di_guo_zhi_zong_heng` for that drama.
+
+For example, these select the same file from the repository root:
+
+```bash
+dramavqa validate --task single-point --drama kuang_biao --limit 10
+dramavqa validate --task single-point --data-root DramaVQA --drama kuang_biao --limit 10
+dramavqa validate --task single-point --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json --drama kuang_biao --limit 10
+```
 
 ## One workflow for every task
 
@@ -49,7 +91,7 @@ variables are respected.
 | Paired first/second source | `source-q1`, `source-q2` | Same Multi-Hop JSON | Same two L3 scenes |
 | Single-point ablation | `ablation` | Flat single-point JSON | L2–L5; also requires `--mode` |
 
-Each command accepts `--qa`, `--drama`, `--limit`, `--output-dir`,
+Each command accepts `--qa`, `--data-root`, `--drama`, `--limit`, `--output-dir`,
 `--sample-frames`, `--target-width` and `--level`. `--limit 10` means **ten
 questions**, even when a clip contains several questions. Zero selects all.
 The default eight frames are intended for quick checks; explicitly set the
@@ -59,18 +101,18 @@ representative. Validate the whole dataset before selecting a subset.
 
 ```bash
 # 1. Validate the input without a model.
-dramavqa validate --task single-point --qa /data/qa/kuang_biao.json \
+dramavqa validate --task single-point --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
   --drama kuang_biao --limit 10
 
 # 2. Generate frames, face annotations and text subtitles.
-dramavqa prepare --task single-point --qa /data/qa/kuang_biao.json \
+dramavqa prepare --task single-point --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
   --drama kuang_biao --limit 10 --level L2 --sample-frames 8 \
-  --video-root /data/Release_Drama --output-dir /data/runs/single-point
+  --video-root data/drama_bench_data --output-dir runs/single-point
 
 # 3. Evaluate those exact ten questions against a real model server.
-dramavqa run --task single-point --qa /data/qa/kuang_biao.json \
+dramavqa run --task single-point --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
   --drama kuang_biao --limit 10 --level L2 --sample-frames 8 \
-  --output-dir /data/runs/single-point --model my-model \
+  --output-dir runs/single-point --model my-model \
   --base-url http://127.0.0.1:8000/v1
 ```
 
@@ -90,8 +132,10 @@ completion report. Existing compatible results can be resumed. If a compatible A
 usage, answers are still saved and token usage remains `null` (unknown); the
 report does not fabricate a zero-token total.
 
-For multi-point or multi-hop, change `--task` and `--qa` in the same three
-commands, and use `--level L3`. Multi-scene preparation always writes
+For multi-point or multi-hop, change `--task` in the same three
+commands and omit `--qa` to select the correct group automatically, or pass
+`--qa DramaVQA/Multi-Point/<drama>.json` /
+`--qa DramaVQA/Multi-Hop/<drama>.json`. Use `--level L3`. Multi-scene preparation always writes
 `OUTPUT_DIR/images`; evaluation can reuse another frame tree with `--image-root`.
 It preserves chronological concatenation and source labels. Paired-source
 modes retain all pairs, not the historical deduplicated-source metric.
@@ -121,10 +165,14 @@ clean model answer. Prompt text and extraction rules have not been rewritten.
 
 ## Source data and rendering
 
-Expected layout:
+Question JSON files are already tracked in `DramaVQA/`. Videos and metadata
+are separate: download the required drama folders from
+[198808xc/drama_bench_data](https://huggingface.co/datasets/198808xc/drama_bench_data)
+into `data/drama_bench_data`, then pass `--video-root data/drama_bench_data`.
+The evaluator does not download media automatically. Expected layout:
 
 ```text
-Release_Drama/<drama>/
+data/drama_bench_data/<drama>/
   video_data/version.json
   video_data/<active-version>/0001.mp4
   face_data/version.json
@@ -176,9 +224,9 @@ frames with the same public command, then run:
 
 ```bash
 dramavqa run --task single-point --backend conan \
-  --qa /data/qa/kuang_biao.json --drama kuang_biao --limit 10 \
-  --level L2 --sample-frames 8 --output-dir /data/runs/conan \
-  --image-root /data/runs/single-point/images \
+  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json --drama kuang_biao --limit 10 \
+  --level L2 --sample-frames 8 --output-dir runs/conan \
+  --image-root runs/single-point/images \
   --conan-eval /models/Conan/Conan-Eval --model-path /models/Conan-7B \
   --python /envs/Conan/bin/python --gpu-ids 0 --max-tokens 4000
 ```
