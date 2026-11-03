@@ -174,7 +174,7 @@ def sort_scenes_by_story_time(l3_times, scenes):
 # drama name in QA JSON key may differ from image cache directory name; unified mapping
 # here.
 _DRAMA_DIR_MAP = {
-    'da_qin_di_guo_zhi_zong_heng': 'da_qin_di_guo',
+    'qin_empire_2': 'qin_empire_2',
 }
 
 
@@ -212,8 +212,7 @@ def pil_to_b64(pil_img):
 
 def load_clip_images(image_root, drama, l3_time):
     """Read all frame images from <image_root>/<drama_dir>/<clip_dir>/render/. drama name
-    mapped via drama_to_image_dir() to actual directory name (handling cases like
-    da_qin_di_guo_zhi_zong_heng -> da_qin_di_guo, etc.). Returns: imgs: list[(PIL.Image,
+    uses the QA filename stem for the media and image directory. Returns: imgs: list[(PIL.Image,
     str)] — (image, filename), sorted by filename reason: str | None — None=success,
     otherwise skip_reason"""
     clip_dir = os.path.join(image_root, resolve_drama_image_dir(image_root, drama), l3_time_to_dir_name(l3_time), 'render')

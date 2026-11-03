@@ -12,27 +12,27 @@ import pytest
 from MultiPointEvalOpen.qa_format import load_multi_point
 
 
-def test_multi_point_video_to_answer(tmp_path: Path):
+@pytest.mark.parametrize("drama,episodes", [("sample_drama", (1, 2)), ("breaking_bad", (8, 9))])
+def test_multi_point_video_to_answer(tmp_path: Path, drama, episodes):
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         pytest.skip("ffmpeg and ffprobe are required for source-video extraction")
     pytest.importorskip("cv2")
     pytest.importorskip("tqdm")
     from MultiPointEvalOpen.legacy_evaluator import MultiPointEvaluator
 
-    drama = "sample_drama"
     video_dir = tmp_path / "videos" / drama / "video_data" / "v1"
     video_dir.mkdir(parents=True)
     (video_dir.parent / "version.json").write_text(
         json.dumps({"video_step": {"active_version": "v1"}}), encoding="utf-8"
     )
-    for episode in (1, 2):
+    for episode in episodes:
         subprocess.run(
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
              "testsrc=size=64x64:rate=25:duration=2", "-c:v", "ffv1",
              str(video_dir / f"{episode:04}.mkv")], check=True,
         )
-    late = "0002-00:00:00.000_0002-00:00:01.960"
-    early = "0001-00:00:00.000_0001-00:00:01.960"
+    late = f"{episodes[1]:04d}-00:00:00.000_{episodes[1]:04d}-00:00:01.960"
+    early = f"{episodes[0]:04d}-00:00:00.000_{episodes[0]:04d}-00:00:01.960"
     qa_path = tmp_path / f"{drama}.json"
     qa_path.write_text(json.dumps([{
         "Question": "Which scene came first?", "Options": "A. Scene 2\nB. Scene 1",

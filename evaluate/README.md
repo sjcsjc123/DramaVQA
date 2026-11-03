@@ -68,17 +68,17 @@ The CLI accepts three ways to locate question data:
 
 Single-point and ablation default to `--subset Bench_Data_mini_2000`.
 Use `--subset Bench_Data` for the full benchmark, or `--subset Training_Set`
-with `--drama downton_abbey`, `ren_shi_jian` or `zhen_huan_zhuan` for training.
+with `--drama downton_abbey`, `a_lifelong_journey` or `empresses_in_the_palace` for training.
 Multi-point selects `Multi-Point`; multi-hop and both sources select `Multi-Hop`.
-`--drama` must match the JSON filename stem, including
-`da_qin_di_guo_zhi_zong_heng` for that drama.
+`--drama` must match the JSON filename stem, such as `the_knockout`,
+`qin_empire_2`, or `breaking_bad`. The same name identifies the media directory.
 
 For example, these select the same file from the repository root:
 
 ```bash
-dramavqa validate --task single-point --drama kuang_biao --limit 10
-dramavqa validate --task single-point --data-root DramaVQA --drama kuang_biao --limit 10
-dramavqa validate --task single-point --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json --drama kuang_biao --limit 10
+dramavqa validate --task single-point --drama the_knockout --limit 10
+dramavqa validate --task single-point --data-root DramaVQA --drama the_knockout --limit 10
+dramavqa validate --task single-point --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json --drama the_knockout --limit 10
 ```
 
 ## One workflow for every task
@@ -101,17 +101,17 @@ representative. Validate the whole dataset before selecting a subset.
 
 ```bash
 # 1. Validate the input without a model.
-dramavqa validate --task single-point --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
-  --drama kuang_biao --limit 10
+dramavqa validate --task single-point --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json \
+  --drama the_knockout --limit 10
 
 # 2. Generate frames, face annotations and text subtitles.
-dramavqa prepare --task single-point --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
-  --drama kuang_biao --limit 10 --level L2 --sample-frames 8 \
+dramavqa prepare --task single-point --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json \
+  --drama the_knockout --limit 10 --level L2 --sample-frames 8 \
   --video-root data/drama_bench_data --output-dir runs/single-point
 
 # 3. Evaluate those exact ten questions against a real model server.
-dramavqa run --task single-point --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
-  --drama kuang_biao --limit 10 --level L2 --sample-frames 8 \
+dramavqa run --task single-point --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json \
+  --drama the_knockout --limit 10 --level L2 --sample-frames 8 \
   --output-dir runs/single-point --model my-model \
   --base-url http://127.0.0.1:8000/v1
 ```
@@ -169,7 +169,9 @@ Question JSON files are already tracked in `DramaVQA/`. Videos and metadata
 are separate: download the required drama folders from
 [198808xc/drama_bench_data](https://huggingface.co/datasets/198808xc/drama_bench_data)
 into `data/drama_bench_data`, then pass `--video-root data/drama_bench_data`.
-The evaluator does not download media automatically. Expected layout:
+`data/drama_bench_data` is only a suggested local download destination, not a
+tracked GitHub directory. The evaluator does not download media automatically.
+Expected layout:
 
 ```text
 data/drama_bench_data/<drama>/
@@ -182,8 +184,15 @@ data/drama_bench_data/<drama>/
 ```
 
 The version manifest selects the active directory; an available subdirectory
-is used when no matching entry exists. Seasonal drama mappings are in
-`DRAMA_NAME_MAP`. Download every episode touched by the chosen context window,
+is used when no matching entry exists. Each drama has one directory, including
+English-language dramas such as `breaking_bad`, `friends`, `lost`,
+`prison_break`, and `downton_abbey`; do not append a season suffix.
+Episode filenames and QA time/frame endpoints use continuous episode numbers
+across seasons. For example, if a season ends at `0008`, the next season starts
+at `0009`, not `0001`. Videos, face metadata, subtitle metadata, and speaker
+metadata must all use the same episode numbers. The evaluator uses the episode
+number already supplied by the QA; it does not calculate season offsets or
+rename/download media. Download every episode touched by the chosen context window,
 including intermediate episodes. L4/L5 can span many episodes.
 
 `--subtitles text` is the default: face-box frames plus separate subtitle text.
@@ -224,7 +233,7 @@ frames with the same public command, then run:
 
 ```bash
 dramavqa run --task single-point --backend conan \
-  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json --drama kuang_biao --limit 10 \
+  --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json --drama the_knockout --limit 10 \
   --level L2 --sample-frames 8 --output-dir runs/conan \
   --image-root runs/single-point/images \
   --conan-eval /models/Conan/Conan-Eval --model-path /models/Conan-7B \

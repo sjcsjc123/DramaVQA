@@ -122,8 +122,8 @@ def test_seasonal_frame_directory_names(tmp_path):
 
 def test_public_image_directory_wins_over_legacy_alias(tmp_path):
     from MultiPointEvalOpen.legacy_evaluator import resolve_drama_image_dir
-    drama = "da_qin_di_guo_zhi_zong_heng"
-    assert resolve_drama_image_dir(str(tmp_path), drama) == "da_qin_di_guo"
+    drama = "qin_empire_2"
+    assert resolve_drama_image_dir(str(tmp_path), drama) == "qin_empire_2"
     (tmp_path / drama).mkdir()
     assert resolve_drama_image_dir(str(tmp_path), drama) == drama
 

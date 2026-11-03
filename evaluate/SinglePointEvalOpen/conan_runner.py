@@ -24,7 +24,7 @@ else:
 def command(args: argparse.Namespace) -> list[str]:
     resolution = args.resolution
     if resolution is None:
-        resolution = 0.1 if args.drama == "kuang_biao" else 0.2
+        resolution = 0.1 if args.drama == "the_knockout" else 0.2
     return [
         str(args.python), str(args.conan_eval / "main_singlehop.py"),
         "--benchmark", "singlehop", "--mode", "step",
@@ -56,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-new-tokens", type=int, default=4000)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--resolution", type=float, default=None)
-    parser.add_argument("--drama-image-map", default="da_qin_di_guo_zhi_zong_heng=da_qin_di_guo")
+    parser.add_argument("--drama-image-map", default="")
     parser.add_argument("--dry-run", action="store_true")
     return parser
 

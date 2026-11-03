@@ -51,9 +51,9 @@ The broader data collection described in the paper contains 15 TV series totalin
 
 ### Videos and metadata
 
-The Hugging Face data repository is organized into drama or season directories, with the following contents:
+The evaluation media layout uses one directory per drama, with the following contents:
 
-| Path within a drama or season | Contents |
+| Path within a drama | Contents |
 | --- | --- |
 | `video_data/` | Episode videos in MP4 format |
 | `face_video_data/` | Videos with face annotations |
@@ -61,6 +61,12 @@ The Hugging Face data repository is organized into drama or season directories, 
 | `subtitle_data/` | Subtitle metadata in JSON format |
 | `timestamp_data/` | Timestamp metadata in CSV format |
 | `SHA256SUMS` | File checksums |
+
+English-language dramas use a single directory such as `breaking_bad/`, not
+`breaking_bad_1/` or `breaking_bad_2/`. Episode numbering continues across seasons:
+if one season ends at `0008`, the next begins at `0009`. QA timestamps, videos,
+and all episode metadata use those same continuous numbers. Media merging is
+performed separately; the evaluator does not rename files or infer season offsets.
 
 ### Question data
 
@@ -74,7 +80,7 @@ All question-data paths below are relative to the project root:
 | Multi-hop | [`DramaVQA/Multi-Hop/`](DramaVQA/Multi-Hop/) | Multi-hop questions |
 | Training | [`DramaVQA/Training_Set/`](DramaVQA/Training_Set/) | Training questions from **three additional dramas**, separate from the 12 evaluation dramas |
 
-The training set contains `downton_abbey.json` (*Downton Abbey*), `ren_shi_jian.json` (*A Lifelong Journey*), and `zhen_huan_zhuan.json` (*Empresses in the Palace*).
+The training set contains `downton_abbey.json` (*Downton Abbey*), `a_lifelong_journey.json` (*A Lifelong Journey*), and `empresses_in_the_palace.json` (*Empresses in the Palace*).
 
 Use the question annotations from this repository together with the corresponding videos and metadata from Hugging Face for evaluation or training.
 
@@ -87,15 +93,15 @@ git clone https://github.com/xinyuehuo/DramaVQA.git
 cd DramaVQA
 ```
 
-Install the Hugging Face CLI, then download the videos and metadata for the drama you want to evaluate. The commands below run from the repository root and use *The Knockout* (`kuang_biao`) throughout:
+Install the Hugging Face CLI, then download the videos and metadata for the drama you want to evaluate. The commands below run from the repository root and use *The Knockout* (`the_knockout`) throughout:
 
 ```bash
 python -m pip install --upgrade huggingface_hub
 hf download 198808xc/drama_bench_data --repo-type dataset \
-  --include "kuang_biao/*" --local-dir data/drama_bench_data
+  --include "the_knockout/*" --local-dir data/drama_bench_data
 ```
 
-Replace the include pattern for another drama or season. To download the complete media repository, omit `--include`. Video downloads can be large; download every episode required by the selected context windows, including intermediate episodes for contexts that span multiple episodes.
+Replace the include pattern for another drama. To download the complete media repository, omit `--include`. Video downloads can be large; download every episode required by the selected context windows, including intermediate episodes for contexts that span multiple episodes.
 
 The evaluator expects a media root containing drama directories with versioned media and metadata:
 
@@ -112,7 +118,7 @@ data/drama_bench_data/<drama>/
     └── <active-version>/0001.json
 ```
 
-`--video-root` points to the parent of the drama directories. Face and subtitle metadata support the benchmark's annotated visual inputs and text subtitles. See [source data and rendering](evaluate/README.md#source-data-and-rendering) for version selection, seasonal drama mappings, and pre-rendered videos.
+`--video-root` points to the parent of the drama directories. Face and subtitle metadata support the benchmark's annotated visual inputs and text subtitles. See [source data and rendering](evaluate/README.md#source-data-and-rendering) for version selection, continuous episode numbering, and pre-rendered videos.
 
 ## Evaluation
 
@@ -148,21 +154,21 @@ The following Bash commands run from the repository root. They select ten questi
 ```bash
 # 1. Validate question annotations without calling a model.
 python -m dramavqa validate --task single-point \
-  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
-  --drama kuang_biao --limit 10
+  --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json \
+  --drama the_knockout --limit 10
 
 # 2. Prepare frames and subtitle inputs from the downloaded media.
 python -m dramavqa prepare --task single-point \
-  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
-  --drama kuang_biao --limit 10 --level L2 --sample-frames 8 \
+  --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json \
+  --drama the_knockout --limit 10 --level L2 --sample-frames 8 \
   --video-root data/drama_bench_data \
-  --output-dir runs/single-point/kuang_biao
+  --output-dir runs/single-point/the_knockout
 
 # 3. Evaluate the prepared inputs.
 python -m dramavqa run --task single-point \
-  --qa DramaVQA/Bench_Data_mini_2000/kuang_biao.json \
-  --drama kuang_biao --limit 10 --level L2 --sample-frames 8 \
-  --output-dir runs/single-point/kuang_biao \
+  --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json \
+  --drama the_knockout --limit 10 --level L2 --sample-frames 8 \
+  --output-dir runs/single-point/the_knockout \
   --model my-model --base-url http://127.0.0.1:8000/v1
 ```
 
@@ -174,10 +180,10 @@ Inside this checkout, `--qa` is optional. The CLI discovers the tracked `DramaVQ
 question directory and selects the file for `--task`, `--drama` and `--subset`:
 
 ```bash
-python -m dramavqa validate --task single-point --drama kuang_biao --limit 10
-python -m dramavqa validate --task single-point --subset Bench_Data --drama kuang_biao --limit 10
-python -m dramavqa validate --task multi-point --drama kuang_biao --limit 10
-python -m dramavqa validate --task multi-hop --drama kuang_biao --limit 10
+python -m dramavqa validate --task single-point --drama the_knockout --limit 10
+python -m dramavqa validate --task single-point --subset Bench_Data --drama the_knockout --limit 10
+python -m dramavqa validate --task multi-point --drama the_knockout --limit 10
+python -m dramavqa validate --task multi-hop --drama the_knockout --limit 10
 python -m dramavqa validate --task single-point --subset Training_Set --drama downton_abbey --limit 10
 ```
 
@@ -186,7 +192,7 @@ Use `--data-root /path/to/DramaVQA` when running outside the checkout or using
 another question-data directory. An explicit `--qa FILE` overrides this lookup.
 These options locate question annotations only; `--video-root` still points to
 the separately downloaded videos and metadata. Use the exact JSON filename stem
-for `--drama`, for example `da_qin_di_guo_zhi_zong_heng`.
+for `--drama`, for example `qin_empire_2`.
 
 ### Multi-point and multi-hop evaluation
 
@@ -194,22 +200,22 @@ Use the same three-stage workflow with the corresponding task, QA path, and `--l
 
 ```bash
 python -m dramavqa validate --task multi-hop \
-  --qa DramaVQA/Multi-Hop/kuang_biao.json --drama kuang_biao --limit 10
+  --qa DramaVQA/Multi-Hop/the_knockout.json --drama the_knockout --limit 10
 
 python -m dramavqa prepare --task multi-hop \
-  --qa DramaVQA/Multi-Hop/kuang_biao.json \
-  --drama kuang_biao --limit 10 --level L3 --sample-frames 8 \
+  --qa DramaVQA/Multi-Hop/the_knockout.json \
+  --drama the_knockout --limit 10 --level L3 --sample-frames 8 \
   --video-root data/drama_bench_data \
-  --output-dir runs/multi-hop/kuang_biao
+  --output-dir runs/multi-hop/the_knockout
 
 python -m dramavqa run --task multi-hop \
-  --qa DramaVQA/Multi-Hop/kuang_biao.json \
-  --drama kuang_biao --limit 10 --level L3 --sample-frames 8 \
-  --output-dir runs/multi-hop/kuang_biao \
+  --qa DramaVQA/Multi-Hop/the_knockout.json \
+  --drama the_knockout --limit 10 --level L3 --sample-frames 8 \
+  --output-dir runs/multi-hop/the_knockout \
   --model my-model --base-url http://127.0.0.1:8000/v1
 ```
 
-For multi-point evaluation, replace `multi-hop` with `multi-point`, use `DramaVQA/Multi-Point/kuang_biao.json`, and choose a separate output directory.
+For multi-point evaluation, replace `multi-hop` with `multi-point`, use `DramaVQA/Multi-Point/the_knockout.json`, and choose a separate output directory.
 
 ### Results and additional options
 
