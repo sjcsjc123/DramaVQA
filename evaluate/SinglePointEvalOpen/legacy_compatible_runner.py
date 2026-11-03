@@ -866,21 +866,14 @@ class LLMInference:
             cumulative_duration = 0.0
             for season, video_path in enumerate(self.video_paths):
                 if self.use_rendered_video:
-                    # New layout: <drama>/video_face_data/<active_version>/*.mp4. Old
-                    # layout: <drama>/video_face_rendered/*.mp4 (flat structure).
                     video_dir = None
-                    face_video_root = os.path.join(video_path, 'video_face_data')
-                    if os.path.isdir(face_video_root):
+                    face_video_root = os.path.join(video_path, 'face_video_data')
+                    for directory in ('face_video_data', 'video_face_data', 'video_face_rendered'):
                         video_dir = self._resolve_versioned_dir(
-                            face_video_root, 'face_render_step', fallback_keyword='face_video')
-                        if video_dir is None:
-                            print(f"[WARN] video_face_data 下无可用版本目录，跳过: {face_video_root}")
-                            self.skipped_videos.append({'path': face_video_root, 'reason': 'no_version_dir'})
-                            continue
-                    else:
-                        legacy_dir = os.path.join(video_path, 'video_face_rendered')
-                        if os.path.isdir(legacy_dir):
-                            video_dir = legacy_dir
+                            os.path.join(video_path, directory), 'face_render_step',
+                            fallback_keyword='face_video')
+                        if video_dir is not None:
+                            break
                     if video_dir is None:
                         # Skip the task if the episode is incomplete or the directory
                         # name does not match. Do not let a single missing episode
@@ -1230,46 +1223,19 @@ class LLMInference:
         return 'results.{}'.format(self.scale_factor)
 
     def _resolve_versioned_dir(self, parent_dir, step_key, fallback_keyword=None):
-        """Parse data directory with version.json, return path to active version
-        subdirectory. New data layout introduces version management:
-        <drama>/<data_dir>/version.json {"<step>": {"active_version": "<dir>"}}
-        <drama>/<data_dir>/<version_dir>/... actual files If version.json is missing or
-        damaged, fall back to selecting subdirectories by keyword/dictionary order to
-        ensure old structure remains readable."""
-        if not os.path.isdir(parent_dir):
-            return None
-
-        version_file = os.path.join(parent_dir, 'version.json')
-        if os.path.exists(version_file):
-            try:
-                with open(version_file, 'r', encoding='utf-8') as fr:
-                    version_data = json.load(fr)
-                active = (version_data.get(step_key) or {}).get('active_version')
-                if active:
-                    active_path = os.path.join(parent_dir, active)
-                    if os.path.isdir(active_path):
-                        return active_path
-                    print(f"[WARN] version.json 指定的版本目录不存在: {active_path}")
-            except (json.JSONDecodeError, OSError) as e:
-                print(f"[WARN] version.json 解析失败({parent_dir}): {type(e).__name__}: {e}")
-
-        subdirs = sorted(d for d in os.listdir(parent_dir)
-                         if os.path.isdir(os.path.join(parent_dir, d)))
-        if not subdirs:
-            return None
-        if fallback_keyword:
-            for d in subdirs:
-                if fallback_keyword in d:
-                    return os.path.join(parent_dir, d)
-        return os.path.join(parent_dir, subdirs[-1])
+        """Read flat episode directories or optional legacy version layouts."""
+        if not __package__:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from SinglePointEvalOpen.media_layout import resolve_data_dir
+        return resolve_data_dir(parent_dir, step_key, fallback_keyword)
 
     def _get_drama_root(self, sea_epi):
         """Derive the root directory from video path. Videos may come from video_data/ or
-        video_face_data/ (new version, with version subdirectories), and after uniform
+        face_video_data/ (flat current layout), and after uniform
         stripping, the face_data / subtitle_data / speaker_data directories can be
         located."""
         video_path = self.episode_info[sea_epi]['video_path']
-        for marker in ('/video_face_data/', '/video_face_rendered/', '/video_data/'):
+        for marker in ('/face_video_data/', '/video_face_data/', '/video_face_rendered/', '/video_data/'):
             if marker in video_path:
                 return video_path.split(marker)[0]
         return os.path.dirname(os.path.dirname(video_path))
@@ -2573,12 +2539,10 @@ class LLMInference:
             if self.render_subtitle or self.subtitle_text:
                 subtitle_path = os.path.join(drama_root, 'subtitle_data')
                 try:
-                    with open(os.path.join(subtitle_path, 'version.json'), 'r', encoding='utf-8') as fr:
-                        version_data = json.load(fr)
-                        subtitle_file = version_data['subtitle_checking_step']['active_version']
-                        subtitle_file_path = os.path.join(subtitle_path, subtitle_file, episode+'.json')
-                        with open(subtitle_file_path, 'r', encoding='utf-8') as file:
-                            subtitle_data = json.load(file)
+                    subtitle_dir = self._resolve_versioned_dir(subtitle_path, 'subtitle_checking_step')
+                    subtitle_file_path = os.path.join(subtitle_dir or subtitle_path, episode + '.json')
+                    with open(subtitle_file_path, 'r', encoding='utf-8') as file:
+                        subtitle_data = json.load(file)
                 except (FileNotFoundError, KeyError) as e:
                     print(f'WARNING: subtitle not found for {self.drama} episode {episode}: {e}')
                     subtitle_data = None
@@ -2917,10 +2881,8 @@ class LLMInference:
         speaker_path = os.path.join(self._get_drama_root(sea_epi), 'speaker_data')
         speak_map_path = None
         try:
-            with open(os.path.join(speaker_path, 'version.json'), 'r', encoding='utf-8') as fr:
-                version_data = json.load(fr)
-                speaker_file = version_data['speaker_recognition_step']['active_version']
-                speak_map_path = os.path.join(speaker_path, speaker_file, '.workspace/new_roles_map.json')
+            speaker_dir = self._resolve_versioned_dir(speaker_path, 'speaker_recognition_step')
+            speak_map_path = os.path.join(speaker_dir or speaker_path, '.workspace/new_roles_map.json')
         except:
             pass
 
@@ -3093,27 +3055,25 @@ class LLMInference:
             time_ = time.replace(':', '-')
             time_ = time_.replace('#', '-')
             speaker_path = os.path.join(self._get_drama_root(video_key), 'speaker_data')
-            with open(os.path.join(speaker_path, 'version.json'), 'r', encoding='utf-8') as fr:
-                version_data = json.load(fr)
-                speaker_file = version_data['speaker_recognition_step']['active_version']
-                speaker_file_path = os.path.join(speaker_path, speaker_file, episode+'.json')
-                with open(speaker_file_path, 'r', encoding='utf-8') as file:
-                    speaker_data = json.load(file)
-                    for im_id in range(images.shape[0]):
-                        frame_id = frame_indices[im_id]
-                        if has_season == False:
-                            frame_key = episode + '_' + str(frame_id)
-                        else:
-                            frame_key = season + '_' + episode + '_' + str(frame_id)
-                        speaker_save_info[frame_key] = {}
-                        for sub_key, info in speaker_data['object_list'].items():
-                            start_frame = info['start_frame']
-                            end_frame = info['end_frame']
-                            if start_frame <= int(frame_id) <= end_frame:
-                                speaker_save_info[frame_key] = {
-                                    'role': info['role'],
-                                    'text': info['text']
-                                }
+            speaker_dir = self._resolve_versioned_dir(speaker_path, 'speaker_recognition_step')
+            speaker_file_path = os.path.join(speaker_dir or speaker_path, episode + '.json')
+            with open(speaker_file_path, 'r', encoding='utf-8') as file:
+                speaker_data = json.load(file)
+                for im_id in range(images.shape[0]):
+                    frame_id = frame_indices[im_id]
+                    if has_season == False:
+                        frame_key = episode + '_' + str(frame_id)
+                    else:
+                        frame_key = season + '_' + episode + '_' + str(frame_id)
+                    speaker_save_info[frame_key] = {}
+                    for sub_key, info in speaker_data['object_list'].items():
+                        start_frame = info['start_frame']
+                        end_frame = info['end_frame']
+                        if start_frame <= int(frame_id) <= end_frame:
+                            speaker_save_info[frame_key] = {
+                                'role': info['role'],
+                                'text': info['text']
+                            }
 
         sampled_speaker_path = os.path.join(self.image_path, time_, 'spkeaker.json')
         atomic_dump_json(speaker_save_info, sampled_speaker_path)

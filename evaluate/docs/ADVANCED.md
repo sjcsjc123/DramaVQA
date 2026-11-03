@@ -172,9 +172,10 @@ python -m SinglePointEvalOpen.legacy_compatible_runner \
 uses the historical `q_a_dict.json` and `raw_responses.jsonl` layout. The two
 stages must use the same frame count, rendering mode, and image path.
 
-The video layout is `data/drama_bench_data/<drama>/video_data/<version>/0001.mkv`
-(or `.mp4`), with `video_data/version.json` selecting the active version;
-if `version.json` is absent, the reader selects an available subdirectory.
+The current video layout is `data/drama_bench_data/<drama>/video_data/0001.mp4`
+(or `.mkv`), with face videos in `face_video_data/0001.mp4` and episode JSON
+metadata directly in `face_data/` and `subtitle_data/`. No `version.json` is
+required. Legacy version manifests and subdirectories remain supported.
 Every drama uses one directory named after its QA JSON stem. English-language
 dramas use continuous episode numbering across seasons: after `0008` comes
 `0009`, including videos, face/subtitle metadata, and speaker metadata.

@@ -175,16 +175,17 @@ Expected layout:
 
 ```text
 data/drama_bench_data/<drama>/
-  video_data/version.json
-  video_data/<active-version>/0001.mp4
-  face_data/version.json
-  face_data/<active-version>/0001.json
-  subtitle_data/version.json
-  subtitle_data/<active-version>/0001.json
+  video_data/0001.mp4
+  face_video_data/0001.mp4
+  face_data/0001.json
+  subtitle_data/0001.json
 ```
 
-The version manifest selects the active directory; an available subdirectory
-is used when no matching entry exists. Each drama has one directory, including
+Current Hugging Face data needs no `version.json` or version subdirectory.
+Flat episode files take priority. Older downloads with a version manifest or
+version subdirectories remain supported. `--use-rendered-video` reads
+`face_video_data/`; historical `video_face_data/` and `video_face_rendered/`
+paths remain compatible. Each drama has one directory, including
 English-language dramas such as `breaking_bad`, `friends`, `lost`,
 `prison_break`, and `downton_abbey`; do not append a season suffix.
 Episode filenames and QA time/frame endpoints use continuous episode numbers
@@ -220,7 +221,9 @@ determines rendering and subtitle policy:
 | `exp6_langonly` | Question and options only |
 
 For `exp4_speaker`, provide `--speaker-root` pointing to the parent of
-`<drama>/speaker_data`. Gallery mode prepares and validates its face gallery automatically during
+`<drama>/speaker_data`, containing episode JSON files (or a legacy version directory).
+Speaker metadata is an external input: the current HF drama directories do not
+include `speaker_data/`. Gallery mode prepares and validates its face gallery automatically during
 `dramavqa prepare`; provide the same `--video-root` again during `run` so
 cache provenance can be verified.
 Language-only evaluation requires no frame generation. Use distinct output
