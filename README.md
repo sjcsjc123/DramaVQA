@@ -97,7 +97,7 @@ Single-point QA is evaluated across four temporal tracks:
 | Extra-Long | 9.3 hours |
 | Ultra-Long (full drama) | 38.9 hours |
 
-See the **[Evaluation Guide](evaluate/README.md)** for single-point, multi-point, and multi-hop experiments, including setup and the **validate → prepare → run** workflow.
+See the **[Evaluation Guide](evaluate/README.md)** for single-point, multi-point, paired-source, and multi-hop evaluation, including setup and the **validate → prepare → run** workflow.
 
 <a name="leaderboard"></a>
 
