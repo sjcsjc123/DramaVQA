@@ -26,6 +26,7 @@ evaluation dependencies are now installed by default.
 ## Install
 
 Requires Linux, Python 3.10+, FFmpeg/ffprobe and a model server for inference.
+Question validation does not call a model or require downloaded videos.
 All command examples below run from the **GitHub repository root**:
 
 ```bash
@@ -38,7 +39,8 @@ If distributing `evaluate/` alone, install with `python -m pip install '.[test]'
 inside that directory, and supply `--data-root` or `--qa` for your question data.
 
 `dramavqa` and `python -m dramavqa` are equivalent. All public arguments use
-hyphens. API credentials come from `OPENAI_API_KEY`; never put them in scripts,
+hyphens. The default backend calls an OpenAI-compatible model API.
+API credentials come from `OPENAI_API_KEY`; never put them in scripts,
 configuration committed to Git, or command arguments. `OPENAI_BASE_URL` sets
 the default endpoint; `--base-url` overrides it. Standard proxy and CA environment
 variables are respected.
@@ -72,6 +74,8 @@ with `--drama downton_abbey`, `a_lifelong_journey` or `empresses_in_the_palace` 
 Multi-point selects `Multi-Point`; multi-hop and both sources select `Multi-Hop`.
 `--drama` must match the JSON filename stem, such as `the_knockout`,
 `qin_empire_2`, or `breaking_bad`. The same name identifies the media directory.
+Keep suffixes that are part of an identifier, such as `ode_to_joy_1`,
+`stand_by_me_1`, or `qin_empire_2`.
 
 For example, these select the same file from the repository root:
 
@@ -80,6 +84,12 @@ dramavqa validate --task single-point --drama the_knockout --limit 10
 dramavqa validate --task single-point --data-root DramaVQA --drama the_knockout --limit 10
 dramavqa validate --task single-point --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json --drama the_knockout --limit 10
 ```
+
+Single-point and training JSON files are objects keyed by clip ID. Each clip
+contains `L2_time`–`L5_time`, corresponding frame ranges, and a `Q&A` list.
+Multi-point and multi-hop JSON files are lists with source-scene information
+used by their task-specific adapters. Question-path selection locates annotations
+only; `--video-root` points to the separately downloaded media.
 
 ## One workflow for every task
 
@@ -91,6 +101,10 @@ dramavqa validate --task single-point --qa DramaVQA/Bench_Data_mini_2000/the_kno
 | Paired first/second source | `source-q1`, `source-q2` | Same Multi-Hop JSON | Same two L3 scenes |
 | Single-point ablation | `ablation` | Flat single-point JSON | L2–L5; also requires `--mode` |
 
+The paper describes temporal tracks using levels L3–L6. The released evaluator
+uses the time-window keys in the annotations: `--level L2`, `L3`, `L4`, or `L5`.
+Use these annotation keys for CLI commands; `L6` is not an accepted CLI value.
+
 Each command accepts `--qa`, `--data-root`, `--drama`, `--limit`, `--output-dir`,
 `--sample-frames`, `--target-width` and `--level`. `--limit 10` means **ten
 questions**, even when a clip contains several questions. Zero selects all.
@@ -98,6 +112,11 @@ The default eight frames are intended for quick checks; explicitly set the
 published frame count (for example 256) for full benchmark experiments.
 Selection follows file order, so it is reproducible but not statistically
 representative. Validate the whole dataset before selecting a subset.
+
+### Quick start: single-point evaluation
+
+These Bash commands use ten Mini questions from *The Knockout* and eight frames
+per context window. Replace the model ID and endpoint with your model service.
 
 ```bash
 # 1. Validate the input without a model.
@@ -116,29 +135,61 @@ dramavqa run --task single-point --qa DramaVQA/Bench_Data_mini_2000/the_knockout
   --base-url http://127.0.0.1:8000/v1
 ```
 
-The two stages must use identical input, limit, context, frame and subtitle
-settings. Preparation checks every selected window for its complete frame set.
-Evaluation writes `summary.json` and exits nonzero for missing, skipped,
-randomly guessed or truncated answers. A response ending at the token limit
-is incomplete even if an option was extracted from its unfinished reasoning;
-the last retry determines truncation status. An incorrect model answer still counts as completed
-inference; completeness and accuracy are different measurements.
+Use identical QA input, question limit, context, frame and subtitle settings
+for `prepare` and `run`. Eight frames are for quick checks; match the paper's
+full setup when reproducing benchmark results.
 
-Use a separate output directory for each task, model and setting. The CLI
-writes the selected QA under `inputs/`, fingerprints its content and rendering
-settings, and rejects accidental reuse with different settings. Original
-result formats remain under `results/`; `summary.json` provides a common
-completion report. Existing compatible results can be resumed. If a compatible API omits token
-usage, answers are still saved and token usage remains `null` (unknown); the
-report does not fabricate a zero-token total.
+### Multi-point and multi-hop evaluation
 
-For multi-point or multi-hop, change `--task` in the same three
-commands and omit `--qa` to select the correct group automatically, or pass
-`--qa DramaVQA/Multi-Point/<drama>.json` /
-`--qa DramaVQA/Multi-Hop/<drama>.json`. Use `--level L3`. Multi-scene preparation always writes
-`OUTPUT_DIR/images`; evaluation can reuse another frame tree with `--image-root`.
-It preserves chronological concatenation and source labels. Paired-source
-modes retain all pairs, not the historical deduplicated-source metric.
+Use the same three-stage workflow with `--level L3`. Omitting `--qa` selects
+the task's question collection automatically. For example:
+
+```bash
+dramavqa validate --task multi-hop \
+  --drama the_knockout --limit 10
+
+dramavqa prepare --task multi-hop \
+  --drama the_knockout --limit 10 --level L3 --sample-frames 8 \
+  --video-root data/drama_bench_data \
+  --output-dir runs/multi-hop/the_knockout
+
+dramavqa run --task multi-hop \
+  --drama the_knockout --limit 10 --level L3 --sample-frames 8 \
+  --output-dir runs/multi-hop/the_knockout \
+  --model my-model --base-url http://127.0.0.1:8000/v1
+```
+
+For multi-point evaluation, replace `--task multi-hop` with `--task multi-point`
+in all three commands and use `runs/multi-point/the_knockout` as the output
+directory. The CLI selects `DramaVQA/Multi-Point/the_knockout.json` instead of
+`DramaVQA/Multi-Hop/the_knockout.json`. If using an explicit `--qa`, update its
+path too, because it overrides automatic selection.
+
+Multi-scene tasks use text subtitles and preserve chronological concatenation
+and source labels. Preparation writes `OUTPUT_DIR/images`; evaluation can reuse
+another frame tree with `--image-root`. Paired-source modes (`source-q1` and
+`source-q2`) use the same Multi-Hop JSON and retain all pairs, so their scores
+are per pair rather than the historical deduplicated-source metric.
+
+### Results and completion checks
+
+Use a separate output directory for each task, model and setting. Each run
+stores selected annotations under `inputs/`, generated frames under `images/`,
+and original evaluator outputs under `results/`. Input and run manifests
+fingerprint the inputs and settings, preventing accidental reuse with different
+configurations. Compatible results can be resumed.
+
+Preparation checks every selected window for its complete frame set and writes
+`frames_summary.json`. After evaluation, `summary.json` reports expected,
+recorded, valid, matched, guessed and truncated answers, together with a
+`complete` flag. Missing, skipped, randomly guessed or truncated answers cause
+the CLI to exit nonzero. A response ending at the token limit is incomplete
+even if an option was extracted from its unfinished reasoning; the last retry
+determines truncation status. An incorrect model answer still counts as completed
+inference; consult the evaluator outputs for accuracy and timing.
+
+If a compatible API omits token usage, answers are still saved and token usage
+remains `null` (unknown); the report does not fabricate a zero-token total.
 
 ## Full prompt and thinking
 
@@ -195,6 +246,12 @@ metadata must all use the same episode numbers. The evaluator uses the episode
 number already supplied by the QA; it does not calculate season offsets or
 rename/download media. Download every episode touched by the chosen context window,
 including intermediate episodes. L4/L5 can span many episodes.
+
+For example, an annotation time range has the form
+`0001-00:00:00.000_0001-00:00:42.125`, without a season prefix. Existing media
+organized by season must be merged and renumbered to match the annotations
+before evaluation. After changing annotations or media numbering, prepare
+inputs in a new output directory so cached frames and results match the new data.
 
 `--subtitles text` is the default: face-box frames plus separate subtitle text.
 Use `--subtitles burn` or `none` for single-point evaluation. Multi-scene tasks

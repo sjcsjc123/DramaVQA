@@ -1,76 +1,64 @@
-# DramaVQA
+<div align="center">
 
-**DramaVQA: Probing Detailed Understanding of Ultra-Long TV Dramas**
+<h1>DramaVQA</h1>
+<p><strong>Probing Detailed Understanding of Ultra-Long TV Dramas</strong></p>
 
-[Project](https://github.com/xinyuehuo/DramaVQA) | [Videos & Metadata](https://huggingface.co/datasets/198808xc/drama_bench_data) | [Question Data](DramaVQA/) | [Evaluation](evaluate/) | [License](LICENSE)
+<a href="https://arxiv.org/abs/2611.00769"><img src="https://img.shields.io/badge/arXiv-2611.00769-b31b1b" alt="Paper on arXiv"></a>
+<a href="https://huggingface.co/datasets/198808xc/drama_bench_data"><img src="https://img.shields.io/badge/Hugging_Face-Dataset-ffd21e" alt="Videos and metadata on Hugging Face"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-3d8a6a" alt="MIT License"></a>
 
-DramaVQA is a video question answering benchmark for evaluating detailed understanding of TV dramas over extended temporal contexts. It challenges multimodal models to locate visual evidence, recognize characters and events, and reason over narratives that span many episodes.
+<p><a href="https://arxiv.org/abs/2611.00769">Paper</a> · <a href="#question-categories">Categories</a> · <a href="#data">Data</a> · <a href="#evaluation">Evaluation</a> · <a href="#leaderboard">Leaderboard</a> · <a href="#citation">Citation</a></p>
 
-## Overview
+</div>
 
-The full single-point evaluation set contains **20,000 multiple-choice questions across 12 TV dramas**, covering approximately **466 hours** of video. Each question has one correct answer among 2–8 options. Questions are checked for uniqueness within the entire drama, allowing the same question to be evaluated with progressively longer video inputs. The project also provides a **2,000-question single-point Mini subset**, **3,200 multi-point questions**, **1,200 multi-hop questions**, and **86,736 training questions** from **three additional TV dramas**.
+<a name="overview"></a>
 
-Key features include:
+## 🎬 Overview
 
-- **Four temporal tracks:** evaluate video understanding from minutes to tens of hours.
-- **Detailed question coverage:** seven major categories and 28 subcategories cover visual details, actions, events, and reasoning.
-- **LLM-assisted annotation with human verification:** questions undergo generation, filtering, human checking and editing, language-prior removal, and global uniqueness verification.
-- **Long-context research:** support the study of video retrieval, persistent memory, and reasoning across distant events.
+DramaVQA benchmarks detailed understanding of ultra-long TV dramas. We process **15 dramas totaling approximately 606 hours**: **12 dramas (466 hours)** form the evaluation benchmark, and **3 additional dramas** form a separate training split with **86,736 questions**.
 
-### Evaluation tracks
+The evaluation benchmark includes **20,000 single-point questions (Full)**, a **2,000-question single-point Mini subset**, **3,200 multi-point questions**, and **1,200 multi-hop questions**. These tasks probe detailed visual understanding, information integration, and reasoning across long narratives.
 
-| Track | Average input duration |
-| --- | --- |
-| Medium | 7.6 minutes |
-| Long | 43.1 minutes |
-| Extra-Long | 9.3 hours |
-| Ultra-Long (full drama) | 38.9 hours |
+<a name="data-generation"></a>
 
-The tracks vary the amount of video context available for answering a question; they do not represent four separate collections of 20,000 questions. The released evaluator selects the time windows stored in the question annotations using `--level L2`, `L3`, `L4`, or `L5`. Use these annotation keys when running the CLI; `L6` is not an accepted CLI value.
+### ⚙️ Data generation
 
-### Question categories
+Metadata extraction and hierarchical captioning are followed by QA generation, filtering, human verification, and global uniqueness checks.
 
-| Category | Examples of evaluated abilities |
-| --- | --- |
-| Visual Perception | Character appearance, objects, scenes, and on-screen text |
-| Spatial Understanding | Spatial locations, relative positions, and viewpoints |
-| Action and Interaction | Body movements, action participants, and object motion |
-| Event Understanding | Event summaries, background, outcomes, and motivations |
-| Temporal Understanding | Changes, transitions, ordering, and temporal comparisons |
-| Relation & Logical Reasoning | Character relations, human-object relations, and causal inference |
-| Counting | Object counts and quantity comparisons |
+<p align="center">
+  <a href="assets/data_generation_pipeline.png"><img src="assets/data_generation_pipeline.png" width="860" alt="DramaVQA data generation pipeline: metadata extraction and hierarchical captioning, followed by QA generation, filtering, human verification, language-prior removal, and global uniqueness checking."></a><br>
+  <sub>Data preparation and QA generation from the paper. Click to enlarge.</sub>
+</p>
 
-## Data
+<a name="question-categories"></a>
 
-The dataset is organized into two parts:
+### 🧩 Question categories
 
-- **Videos and metadata:** source videos and supporting metadata are hosted at **[198808xc/drama_bench_data](https://huggingface.co/datasets/198808xc/drama_bench_data)** on Hugging Face.
-- **Question data:** question annotations are stored in the **[`DramaVQA/`](DramaVQA/) subdirectory of this repository**.
+**7 major categories · 28 subcategories**
 
-The broader data collection described in the paper contains 15 TV series totaling approximately 606 hours; 12 series form the evaluation benchmark, and three additional series are reserved for training.
+<p align="center">
+  <a href="assets/question_categories.png"><img src="assets/question_categories.png" width="420" alt="DramaVQA sunburst taxonomy showing seven major question categories and 28 subcategories."></a><br>
+  <sub>Click to enlarge.</sub>
+</p>
 
-### Videos and metadata
+**Categories and subcategories · 20,000 questions**
 
-The evaluation media layout uses one directory per drama, with the following contents:
+| Category | Questions (Full) | Subcategories |
+| --- | ---: | --- |
+| Visual Perception | 4,966 | Character Clothing; Character Hairstyle; Distinctive Features; Object Appearance; Object Presence; Season and Weather; Scene and Location; Textual Content |
+| Spatial Understanding | 1,409 | Spatial Location; Position Comparison; Shooting Perspective |
+| Action and Interaction | 5,290 | Body Movement; Action Claim Subject; Action Recipient; Object Motion |
+| Event Understanding | 1,981 | Event Summary; Event Background; Event Outcome; Character Motivation |
+| Temporal Understanding | 2,710 | Character Change; State Transition; Temporal Sequence; Temporal Comparison |
+| Relation & Logical Reasoning | 1,868 | Human-Object Relation; Character Relation; Causal Inference |
+| Counting | 1,776 | Object Counting; Quantity Comparison |
+| **Total** | **20,000** | **28 subcategories** |
 
-| Path within a drama | Contents |
-| --- | --- |
-| `video_data/` | Episode videos in MP4 format |
-| `face_video_data/` | Videos with face annotations |
-| `face_data/` | Face metadata in JSON format |
-| `subtitle_data/` | Subtitle metadata in JSON format |
-| `timestamp_data/` | Timestamp metadata in CSV format |
-| `SHA256SUMS` | File checksums |
+<a name="data"></a>
 
-English-language dramas use a single directory such as `breaking_bad/`, not
-`breaking_bad_1/` or `breaking_bad_2/`. Episode numbering continues across seasons:
-if one season ends at `0008`, the next begins at `0009`. QA timestamps, videos,
-and all episode metadata use those same continuous numbers. Media merging is
-performed separately; the evaluator does not rename files or infer season offsets.
+## 📦 Data
 
-### Question data
-
-All question-data paths below are relative to the project root:
+Question annotations are included in this repository. Videos and metadata are available on [Hugging Face](https://huggingface.co/datasets/198808xc/drama_bench_data).
 
 | Collection | Directory | Questions | Dramas |
 | --- | --- | ---: | ---: |
@@ -80,225 +68,149 @@ All question-data paths below are relative to the project root:
 | Multi-hop | [`DramaVQA/Multi-Hop/`](DramaVQA/Multi-Hop/) | 1,200 | 12 |
 | Training | [`DramaVQA/Training_Set/`](DramaVQA/Training_Set/) | 86,736 | 3 |
 
-Counts describe the current checked-in annotations. Single-point and training counts include every item in each clip's `Q&A` list; each multi-point or multi-hop row represents one question. The Mini set is a subset of the full single-point benchmark. Training dramas are separate from the 12 evaluation dramas.
+Mini is a subset of Full. The three training dramas are separate from the evaluation dramas.
 
-### Drama identifiers
+<a name="download"></a>
 
-Question files use English drama identifiers. Use the same identifier for the JSON filename stem, `--drama`, and the media directory. For example, *The Knockout* uses `the_knockout.json`, `--drama the_knockout`, and `data/drama_bench_data/the_knockout/`.
+### 📥 Download
 
-| Drama identifier | Available question collections |
-| --- | --- |
-| `battle_of_changsha` | Full, Mini, Multi-point, Multi-hop |
-| `breaking_bad` | Full, Mini, Multi-point, Multi-hop |
-| `friends` | Full, Mini, Multi-point, Multi-hop |
-| `lost` | Full, Mini, Multi-point, Multi-hop |
-| `minning_town` | Full, Mini, Multi-point, Multi-hop |
-| `ode_to_joy_1` | Full, Mini, Multi-point, Multi-hop |
-| `prison_break` | Full, Mini, Multi-point, Multi-hop |
-| `qin_empire_2` | Full, Mini, Multi-point, Multi-hop |
-| `stand_by_me_1` | Full, Mini, Multi-point, Multi-hop |
-| `the_knockout` | Full, Mini, Multi-point, Multi-hop |
-| `the_long_night` | Full, Mini, Multi-point, Multi-hop |
-| `three_body` | Full, Mini, Multi-point, Multi-hop |
-| `a_lifelong_journey` | Training |
-| `downton_abbey` | Training |
-| `empresses_in_the_palace` | Training |
-
-The suffixes in identifiers such as `ode_to_joy_1`, `stand_by_me_1`, and `qin_empire_2` are part of their exact names. Keep them when selecting question files and media folders.
-
-### Annotation and media alignment
-
-Single-point and training JSON files are objects keyed by clip ID. Each clip contains `L2_time`–`L5_time`, corresponding frame ranges, and a `Q&A` list. Multi-point and multi-hop JSON files are lists with source-scene information used by their task-specific adapters.
-
-The updated English-language drama annotations use continuous episode numbers across seasons in both time and frame ranges. For example, a time range has the form `0001-00:00:00.000_0001-00:00:42.125`, without a season prefix. Use matching continuous episode numbers for videos, face metadata, subtitles, and speaker metadata. Existing media organized by season must be merged and renumbered to match the annotations before evaluation; the evaluator does not perform this conversion.
-
-Use the current question annotations with matching videos and metadata from Hugging Face. After changing annotations or media numbering, prepare inputs in a new output directory so cached frames and results correspond to the updated data.
-
-### Download videos and metadata
-
-Question annotations and evaluation code are included when you clone this repository:
+Clone the repository and download media for one evaluation drama, for example [*The Knockout* (狂飙)](DramaVQA/Bench_Data/the_knockout.json):
 
 ```bash
 git clone https://github.com/xinyuehuo/DramaVQA.git
 cd DramaVQA
-```
-
-Install the Hugging Face CLI, then download the videos and metadata for the drama you want to evaluate. The commands below run from the repository root and use *The Knockout* (`the_knockout`) throughout:
-
-```bash
 python -m pip install --upgrade huggingface_hub
 hf download 198808xc/drama_bench_data --repo-type dataset \
   --include "the_knockout/*" --local-dir data/drama_bench_data
 ```
 
-Replace the include pattern for another drama. To download the complete media repository, omit `--include`. Video downloads can be large; download every episode required by the selected context windows, including intermediate episodes for contexts that span multiple episodes.
+Change `--include` for another drama, or omit it to download all media.
 
-The evaluator expects a media root containing drama directories with flat media and metadata directories:
+<a name="evaluation"></a>
 
-```text
-data/drama_bench_data/<drama>/
-├── video_data/0001.mp4
-├── face_video_data/0001.mp4
-├── face_data/0001.json
-└── subtitle_data/0001.json
-```
+## 🧪 Evaluation
 
-`--video-root` points to the parent of the drama directories. Face and subtitle metadata support the benchmark's annotated visual inputs and text subtitles. See [source data and rendering](evaluate/README.md#source-data-and-rendering) for legacy layout compatibility, continuous episode numbering, and pre-rendered videos.
+Single-point QA is evaluated across four temporal tracks:
 
-## Evaluation
+| Track | Average input duration |
+| --- | --- |
+| Medium | 7.6 minutes |
+| Long | 43.1 minutes |
+| Extra-Long | 9.3 hours |
+| Ultra-Long (full drama) | 38.9 hours |
 
-The [`evaluate/`](evaluate/) directory contains the runnable evaluation package. Its public `dramavqa` CLI provides three stages: **validate question annotations**, **prepare model inputs**, and **run evaluation**.
+See the **[Evaluation Guide](evaluate/README.md)** for single-point, multi-point, and multi-hop experiments, including setup and the **validate → prepare → run** workflow.
 
-### Supported tasks
+<a name="leaderboard"></a>
 
-| Task | CLI argument | Question input | Context |
-| --- | --- | --- | --- |
-| Single-point | `--task single-point` | `DramaVQA/Bench_Data/` or `DramaVQA/Bench_Data_mini_2000/` | `L2`–`L5` |
-| Multi-point | `--task multi-point` | `DramaVQA/Multi-Point/` | `L3` |
-| Multi-hop | `--task multi-hop` | `DramaVQA/Multi-Hop/` | `L3` |
-| Paired source questions | `--task source-q1` or `--task source-q2` | The same `DramaVQA/Multi-Hop/` JSON | The same two `L3` scenes |
-| Single-point ablations | `--task ablation --mode MODE` | Single-point JSON | `L2`–`L5` |
+## 🏆 Leaderboard
 
-Single-point evaluation also accepts the training JSON format. Multi-point and multi-hop evaluation use text subtitles and preserve chronological scene ordering. Paired-source modes evaluate each source question within its pair; their results are per pair, rather than a deduplicated source-question metric.
+**Frames:** sampled frames (`var` = variable). **Think:** ✓ on / — off. <sup>P</sup>: proprietary model.
 
-### Installation
+<!-- Transcribed from the active tab:main_results in iclr_dramavqa_release.tex.
+     Each LaTeX cell is Mini accuracy / Full accuracy / Mini inference time.
+     Preserve model labels and settings from that table, not commented drafts. -->
 
-Input preparation and inference require **Linux, Python 3.10+, and FFmpeg/ffprobe**; API inference also requires access to a compatible model service. Question validation does not call a model or require downloaded videos. From the repository root:
+<details>
+<summary><strong>Mini · 2,000 questions</strong></summary>
 
-```bash
-python -m pip install ./evaluate
-python -m dramavqa --help
-```
+| Rank | Model | Frames | Think | Medium | Long | Extra-Long | Ultra-Long |
+| :--: | --- | ---: | :--: | ---: | ---: | ---: | ---: |
+| 🥇 1 | Gemini-3.5-Flash<sup>P</sup> | 256 | — | **77.5** | **61.2** | **43.9** | **37.1** |
+| 🥈 2 | Qwen3.5-27B | 256 | — | 69.4 | 47.1 | 35.7 | 34.4 |
+| 🥉 3 | Qwen3.6-27B | 512 | — | 72.5 | 55.0 | 37.9 | 34.1 |
+| 4 | Qwen3.5-27B | 512 | — | 72.2 | 51.0 | 37.1 | 33.9 |
+| 5 | Qwen3.6-27B | 256 | — | 69.9 | 48.0 | 35.2 | 33.0 |
+| 6 | GLM-5.3-Flash-FP8 | 512 | ✓ | 75.4 | 56.1 | 36.1 | 32.1 |
+| 6 | GLM-5.3-Flash-FP8 | 256 | ✓ | 70.5 | 49.9 | 34.9 | 32.1 |
+| 8 | Naive-RAG (Q3.8) | var | — | 60.1 | 56.7 | 36.9 | 31.5 |
+| 9 | RAG-BS (Q3.8) | var | — | 56.4 | 40.4 | 32.1 | 30.9 |
+| 10 | LongVideo-R1 (post-tuned) | var | ✓ | 66.1 | 60.0 | 40.0 | 30.8 |
+| 11 | Seed2.0 Pro<sup>P</sup> | 256 | ✓ | 73.2 | 49.2 | 32.2 | 30.7 |
+| 12 | Conan | 512 | ✓ | 49.0 | 37.7 | 29.7 | 29.6 |
+| 13 | Conan | 256 | ✓ | 48.8 | 36.3 | 29.7 | 28.6 |
+| 14 | GPT-5.5<sup>P</sup> | 256 | — | 67.2 | 45.2 | 29.9 | 27.6 |
+| 15 | LongVideo-R1 | var | ✓ | 62.8 | 54.8 | 34.7 | 27.2 |
+| 16 | GLM-4.6V-106B | 512 | — | 55.0 | 37.0 | 27.4 | 26.6 |
+| 17 | GLM-4.6V-106B | 256 | — | 51.0 | 34.5 | 27.4 | 26.5 |
+| 18 | Qwen3-VL-32B | 256 | — | 51.0 | 35.1 | 27.8 | 26.4 |
+| 19 | Naive-RAG (Q3) | var | — | 51.7 | 46.6 | 29.7 | 26.3 |
+| 20 | GLM-4.6V-106B | 256 | ✓ | 57.1 | 36.6 | 27.1 | 25.4 |
+| 20 | Qwen3-VL-32B | 512 | — | 54.8 | 35.8 | 28.2 | 25.4 |
+| 22 | Qwen3-VL-8B | 512 | ✓ | 57.2 | 40.0 | 26.9 | 25.0 |
+| 23 | Qwen3-VL-32B | 256 | ✓ | 62.0 | 37.9 | 26.4 | 24.9 |
+| 24 | RAG-BS (Q3) | var | — | 47.4 | 33.5 | 25.8 | 24.8 |
+| 25 | GLM-4.6V-106B | 512 | ✓ | 60.8 | 40.1 | 25.6 | 24.6 |
+| 26 | Qwen3-VL-32B | 512 | ✓ | 66.1 | 43.7 | 26.4 | 24.1 |
+| 27 | Qwen3-VL-8B | 256 | ✓ | 54.2 | 36.5 | 24.6 | 23.4 |
+| 28 | Qwen3-VL-8B | 256 | — | 40.9 | 28.7 | 24.8 | 22.7 |
+| 29 | Qwen3-VL-8B | 512 | — | 41.7 | 30.4 | 24.1 | 22.6 |
 
-`dramavqa` and `python -m dramavqa` are equivalent. The default backend calls an OpenAI-compatible model API. Set `OPENAI_API_KEY` in your environment if the service requires authentication; use `OPENAI_BASE_URL` or `--base-url` for its endpoint. Set `EVAL_FONT_PATH` to a Chinese-capable font for rendering Chinese labels and subtitles.
+</details>
 
-### Automatic question-path selection
+<details>
+<summary><strong>Full · 20,000 questions</strong></summary>
 
-Inside this checkout, `--qa` is optional. The CLI discovers the tracked `DramaVQA/`
-question directory and selects the file for `--task`, `--drama` and `--subset`:
+| Rank | Model | Frames | Think | Medium | Long | Extra-Long | Ultra-Long |
+| :--: | --- | ---: | :--: | ---: | ---: | ---: | ---: |
+| 🥇 1 | Qwen3.6-27B | 512 | — | **70.8** | 54.9 | 38.6 | **35.1** |
+| 🥈 2 | Qwen3.6-27B | 256 | — | 67.1 | 49.5 | 36.9 | 34.6 |
+| 🥉 3 | Naive-RAG (Q3.8) | var | — | 59.8 | 56.1 | 36.8 | 32.7 |
+| 4 | RAG-BS (Q3.8) | var | — | 56.0 | 41.1 | 32.7 | 31.5 |
+| 5 | LongVideo-R1 (post-tuned) | var | ✓ | 67.5 | **61.4** | **40.9** | 30.5 |
+| 6 | Conan | 256 | ✓ | 50.1 | 37.1 | 30.9 | 29.9 |
+| 7 | Conan | 512 | ✓ | 48.8 | 37.9 | 30.5 | 29.5 |
+| 8 | LongVideo-R1 | var | ✓ | 63.7 | 55.3 | 34.0 | 26.6 |
+| 9 | Qwen3-VL-32B | 512 | — | 53.3 | 37.2 | 27.5 | 26.2 |
+| 10 | Qwen3-VL-32B | 256 | — | 51.3 | 35.0 | 27.4 | 25.9 |
+| 11 | Naive-RAG (Q3) | var | — | 50.4 | 45.9 | 29.1 | 25.3 |
+| 12 | Qwen3-VL-8B | 512 | ✓ | 58.9 | 41.0 | 27.5 | 25.2 |
+| 13 | Qwen3-VL-8B | 256 | ✓ | 56.3 | 37.7 | 26.7 | 24.9 |
+| 14 | RAG-BS (Q3) | var | — | 47.1 | 33.7 | 25.7 | 24.7 |
+| 15 | Qwen3-VL-8B | 512 | — | 42.5 | 31.1 | 25.4 | 24.2 |
+| 16 | Qwen3-VL-8B | 256 | — | 42.3 | 30.2 | 25.1 | 24.1 |
 
-```bash
-python -m dramavqa validate --task single-point --drama the_knockout --limit 10
-python -m dramavqa validate --task single-point --subset Bench_Data --drama the_knockout --limit 10
-python -m dramavqa validate --task multi-point --drama the_knockout --limit 10
-python -m dramavqa validate --task multi-hop --drama the_knockout --limit 10
-python -m dramavqa validate --task single-point --subset Training_Set --drama downton_abbey --limit 10
-```
+</details>
 
-The default single-point/ablation subset is `Bench_Data_mini_2000`.
-Use `--data-root /path/to/DramaVQA` when running outside the checkout or using
-another question-data directory. An explicit `--qa FILE` overrides this lookup.
-For example, these explicit forms select the same Mini file as the default lookup:
+<details>
+<summary><strong>Reference scores and settings</strong></summary>
 
-```bash
-python -m dramavqa validate --task single-point --drama the_knockout \
-  --data-root DramaVQA --limit 10
-python -m dramavqa validate --task single-point --drama the_knockout \
-  --qa DramaVQA/Bench_Data_mini_2000/the_knockout.json --limit 10
-```
+No-vision reference scores apply to all four tracks.
 
-These options locate question annotations only; `--video-root` still points to
-the separately downloaded videos and metadata. Use the exact JSON filename stem
-for `--drama`, for example `qin_empire_2`.
+| Reference | Think | Mini | Full |
+| --- | :--: | ---: | ---: |
+| Random guess | — | 16.2 | 16.2 |
+| Language only (Q3) | — | 21.5 | 22.2 |
+| Language only (Q3.5) | ✓ | 23.1 | 23.3 |
 
-### Quick start: single-point evaluation
+Human reference: **81.0% on Mini / Medium**.
 
-The following Bash commands run from the repository root. They automatically select `DramaVQA/Bench_Data_mini_2000/the_knockout.json`, use ten questions, and sample eight frames per context window for a quick check. Replace the model ID and endpoint with your own service.
+- **Backbones:** Q3 = Qwen3-VL-32B; Q3.5 = Qwen3.5-27B; Q3.8 = Qwen3.8-27B.
+- **Post-tuning:** LongVideo-R1 (post-tuned) uses our training data.
+- **Settings:** see the [paper](https://arxiv.org/abs/2611.00769) and [evaluation guide](evaluate/README.md).
 
-```bash
-# 1. Validate question annotations without calling a model.
-python -m dramavqa validate --task single-point \
-  --drama the_knockout --limit 10
+</details>
 
-# 2. Prepare frames and subtitle inputs from the downloaded media.
-python -m dramavqa prepare --task single-point \
-  --drama the_knockout --limit 10 --level L2 --sample-frames 8 \
-  --video-root data/drama_bench_data \
-  --output-dir runs/single-point/the_knockout
+<a name="citation"></a>
 
-# 3. Evaluate the prepared inputs.
-python -m dramavqa run --task single-point \
-  --drama the_knockout --limit 10 --level L2 --sample-frames 8 \
-  --output-dir runs/single-point/the_knockout \
-  --model my-model --base-url http://127.0.0.1:8000/v1
-```
+## 📖 Citation
 
-Use identical QA input, question limit, level, frame count, and subtitle settings for `prepare` and `run`. `--limit` counts questions, not clips; `--limit 0` selects all questions. Selection follows file order. Eight frames are for quick checks; explicitly configure the frame count and context required by your experiment for benchmark results.
-
-### Multi-point and multi-hop evaluation
-
-Use the same three-stage workflow with `--level L3`. The task selects its question collection automatically: `multi-point` uses `Multi-Point/`, while `multi-hop`, `source-q1`, and `source-q2` use `Multi-Hop/`. For example:
-
-```bash
-python -m dramavqa validate --task multi-hop \
-  --drama the_knockout --limit 10
-
-python -m dramavqa prepare --task multi-hop \
-  --drama the_knockout --limit 10 --level L3 --sample-frames 8 \
-  --video-root data/drama_bench_data \
-  --output-dir runs/multi-hop/the_knockout
-
-python -m dramavqa run --task multi-hop \
-  --drama the_knockout --limit 10 --level L3 --sample-frames 8 \
-  --output-dir runs/multi-hop/the_knockout \
-  --model my-model --base-url http://127.0.0.1:8000/v1
-```
-
-For multi-point evaluation, replace `--task multi-hop` with `--task multi-point` in all three commands and use `runs/multi-point/the_knockout` as the output directory. The CLI then selects `DramaVQA/Multi-Point/the_knockout.json`. If you supply an explicit `--qa`, update that path as well because it overrides automatic selection.
-
-### Results and additional options
-
-Each run directory contains selected annotations under `inputs/`, generated frames under `images/`, and evaluator outputs under `results/`. Input and run manifests record the configuration and prevent reuse with different inputs or model settings. Compatible runs can resume in the same directory.
-
-`frames_summary.json` reports preparation completeness. After evaluation, `summary.json` reports expected, recorded, valid, matched, guessed, and truncated answers, together with a `complete` flag. Missing, skipped, randomly guessed, or truncated answers cause the CLI to exit nonzero. A completed but incorrect model answer still counts as completed inference; consult the evaluator results for accuracy and timing.
-
-The package also provides:
-
-- **Six ablations:** burned subtitles, text subtitles, face galleries, speaker labels, no subtitles, and language-only inputs. See [ablation modes](evaluate/README.md#ablations).
-- **Prompt reasoning options:** `--thinking on` or `off` for API single-point and ablation evaluation. See [prompt and thinking settings](evaluate/README.md#full-prompt-and-thinking).
-- **An optional Conan backend:** single-point evaluation through an external compatible Conan-Eval checkout and model checkpoint. See [Conan setup](evaluate/README.md#conan-backend).
-
-For full instructions, see the [evaluation README](evaluate/README.md) and [advanced commands](evaluate/docs/ADVANCED.md).
-
-## Repository Structure
-
-```text
-DramaVQA/
-├── README.md
-├── LICENSE
-├── DramaVQA/                     # Question annotations
-│   ├── Bench_Data/               # Full single-point benchmark
-│   ├── Bench_Data_mini_2000/      # Single-point Mini subset
-│   ├── Multi-Point/              # Multi-point questions
-│   ├── Multi-Hop/                # Multi-hop questions
-│   └── Training_Set/             # Training questions
-└── evaluate/                     # Installable evaluation package
-    ├── README.md
-    ├── pyproject.toml
-    ├── dramavqa/                 # Unified CLI and completion checks
-    ├── SinglePointEvalOpen/
-    ├── MultiPointEvalOpen/
-    ├── MultiHopEvalOpen/
-    ├── AblationEvalOpen/
-    ├── docs/
-    └── tests/
-```
-
-The download and evaluation commands create local `data/` and `runs/` directories. Keep downloaded media, model checkpoints, credentials, and generated results out of commits.
-
-## Citation
-
-If you use DramaVQA in your research, please cite:
+If you use DramaVQA in your research, please cite our [arXiv paper](https://arxiv.org/abs/2611.00769):
 
 ```bibtex
 @misc{huo2026dramavqa,
-  title  = {DramaVQA: Probing Detailed Understanding of Ultra-Long TV Dramas},
-  author = {Xinyue Huo and Pengfei Chen and Jiannan Ge and Kaiwen Duan and Yunning Cao and Jiacheng Shao and Lingxi Xie and Qi Tian},
-  year   = {2026},
-  url    = {https://github.com/xinyuehuo/DramaVQA}
+  title         = {DramaVQA: Probing Detailed Understanding of Ultra-Long TV Dramas},
+  author        = {Huo, Xinyue and Chen, Pengfei and Ge, Jiannan and Duan, Kaiwen and Shao, Jiacheng and Cao, Yunning and Xie, Lingxi and Tian, Qi},
+  year          = {2026},
+  eprint        = {2611.00769},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV},
+  url           = {https://arxiv.org/abs/2611.00769}
 }
 ```
 
-## License
+<a name="license"></a>
+
+## 📜 License
 
 The code and documentation in this repository are released under the **[MIT License](LICENSE)**.
