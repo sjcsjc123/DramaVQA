@@ -1,4 +1,4 @@
-include LICENSE README.md COMPARISON.md RELEASE_NOTES.md
+include LICENSE README.md
 recursive-include docs *.md
 recursive-include tests *.py *.json
 global-exclude *.py[cod]
