@@ -248,9 +248,8 @@ verify Python, shared libraries, Torch/CUDA and model imports after restoration.
 ## Development and publication
 
 - [Advanced/legacy commands](docs/ADVANCED.md)
-- [Differences from historical evaluators](COMPARISON.md)
 
-Local model trial reports, deployment utilities and machine-specific environments are excluded from this repository. See RELEASE_NOTES.md for the release validation scope.
+Local model trial reports, deployment utilities and machine-specific environments are excluded from this repository.
 
 Comments and docstrings in this package are English. Chinese benchmark text,
 role-name handling, answer regexes and some legacy runtime messages remain

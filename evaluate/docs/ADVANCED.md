@@ -195,9 +195,6 @@ require Pillow built with FreeType. Set `EVAL_FONT_PATH` to the historical
 Chinese TrueType font for the same rendered text as the old environment;
 a system DejaVu font is used only as a portability fallback.
 
-[COMPARISON.md](../COMPARISON.md) documents differences from the historical evaluators.
-[RELEASE_NOTES.md](../RELEASE_NOTES.md) describes validation of this standalone release.
-
 Install optional test dependencies and run:
 
 ```bash

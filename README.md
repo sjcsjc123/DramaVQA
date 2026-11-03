@@ -263,7 +263,7 @@ The package also provides:
 - **Prompt reasoning options:** `--thinking on` or `off` for API single-point and ablation evaluation. See [prompt and thinking settings](evaluate/README.md#full-prompt-and-thinking).
 - **An optional Conan backend:** single-point evaluation through an external compatible Conan-Eval checkout and model checkpoint. See [Conan setup](evaluate/README.md#conan-backend).
 
-For full instructions, see the [evaluation README](evaluate/README.md), [advanced commands](evaluate/docs/ADVANCED.md), and [comparison with historical evaluators](evaluate/COMPARISON.md).
+For full instructions, see the [evaluation README](evaluate/README.md) and [advanced commands](evaluate/docs/ADVANCED.md).
 
 ## Repository Structure
 
