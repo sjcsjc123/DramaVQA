@@ -109,7 +109,7 @@ See the **[Evaluation Guide](evaluate/README.md)** for single-point, multi-point
      Each LaTeX cell is Mini accuracy / Full accuracy / Mini inference time.
      Preserve model labels and settings from that table, not commented drafts. -->
 
-<details>
+<details open>
 <summary><strong>Mini · 2,000 questions</strong></summary>
 
 | Rank | Model | Frames | Think | Medium | Long | Extra-Long | Ultra-Long |
