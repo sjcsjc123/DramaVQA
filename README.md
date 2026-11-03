@@ -26,8 +26,7 @@ The evaluation benchmark includes **20,000 single-point questions (Full)**, a **
 Metadata extraction and hierarchical captioning are followed by QA generation, filtering, human verification, and global uniqueness checks.
 
 <p align="center">
-  <a href="assets/data_generation_pipeline.png"><img src="assets/data_generation_pipeline.png" width="860" alt="DramaVQA data generation pipeline: metadata extraction and hierarchical captioning, followed by QA generation, filtering, human verification, language-prior removal, and global uniqueness checking."></a><br>
-  <sub>Data preparation and QA generation from the paper. Click to enlarge.</sub>
+  <a href="assets/data_generation_pipeline.png"><img src="assets/data_generation_pipeline.png" width="860" alt="DramaVQA data generation pipeline: metadata extraction and hierarchical captioning, followed by QA generation, filtering, human verification, language-prior removal, and global uniqueness checking."></a>
 </p>
 
 <a name="question-categories"></a>
@@ -37,8 +36,7 @@ Metadata extraction and hierarchical captioning are followed by QA generation, f
 **7 major categories · 28 subcategories**
 
 <p align="center">
-  <a href="assets/question_categories.png"><img src="assets/question_categories.png" width="420" alt="DramaVQA sunburst taxonomy showing seven major question categories and 28 subcategories."></a><br>
-  <sub>Click to enlarge.</sub>
+  <a href="assets/question_categories.png"><img src="assets/question_categories.png" width="420" alt="DramaVQA sunburst taxonomy showing seven major question categories and 28 subcategories."></a>
 </p>
 
 **Categories and subcategories · 20,000 questions**
