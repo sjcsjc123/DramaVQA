@@ -1568,19 +1568,20 @@ class LLMInference:
             return None
 
     def _load_role_mapping(self, drama_root):
-        if drama_root in self._role_map_cache:
-            return self._role_map_cache[drama_root]
-        mapping_name = {}
+        """Read optional role-name overrides; retain face labels when unavailable."""
         speaker_path = os.path.join(drama_root, 'speaker_data')
+        speaker_dir = self._resolve_versioned_dir(
+            speaker_path, ('speaker_recognition_step', 'speaker_processing_step'))
+        path = os.path.join(speaker_dir or speaker_path, '.workspace/new_roles_map.json')
         try:
-            speaker_dir = self._resolve_versioned_dir(speaker_path, 'speaker_recognition_step')
-            speak_map_path = os.path.join(speaker_dir or speaker_path, '.workspace/new_roles_map.json')
-            with open(speak_map_path, 'r', encoding='utf-8') as f:
-                mapping_name = json.load(f)
-        except (FileNotFoundError, KeyError, json.JSONDecodeError, OSError, TypeError):
-            mapping_name = {}
-        self._role_map_cache[drama_root] = mapping_name
-        return mapping_name
+            with open(path, encoding='utf-8') as stream:
+                mapping = json.load(stream)
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(mapping, dict):
+            return {}
+        return {key: value for key, value in mapping.items()
+                if isinstance(key, str) and isinstance(value, str)}
 
     def _normalize_role_name(self, role_name, episode, mapping_name):
         if not role_name:
@@ -3211,19 +3212,7 @@ class LLMInference:
         pil_img = Image.fromarray(img)
         draw = ImageDraw.Draw(pil_img)
 
-        speaker_path = os.path.join(self._get_drama_root(sea_epi), 'speaker_data')
-        speak_map_path = None
-        try:
-            speaker_dir = self._resolve_versioned_dir(speaker_path, 'speaker_recognition_step')
-            speak_map_path = os.path.join(speaker_dir or speaker_path, '.workspace/new_roles_map.json')
-        except:
-            pass
-
-        if speak_map_path is not None:
-            with open(speak_map_path) as f:
-                mapping_name = json.load(f)
-        else:
-            mapping_name = {}
+        mapping_name = self._load_role_mapping(self._get_drama_root(sea_epi))
 
         episode = sea_epi.split('_')[1].zfill(4)
         for face in frame_face_data:

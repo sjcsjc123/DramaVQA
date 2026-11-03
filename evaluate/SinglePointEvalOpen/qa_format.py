@@ -97,6 +97,10 @@ def validate_qa(data: Any, *, source: str = "QA") -> dict[str, Any]:
 
     if not isinstance(data, dict) or not data:
         raise ValueError(f"{source}: expected a non-empty object keyed by clip id")
+    levels = list(LEVELS)
+    if any(isinstance(clip, dict) and ("L6_time" in clip or "L6_frame" in clip)
+           for clip in data.values()):
+        levels.append("L6")
     clips = questions = 0
     for clip_id, clip in data.items():
         where = f"{source} clip {clip_id!r}"
@@ -104,7 +108,7 @@ def validate_qa(data: Any, *, source: str = "QA") -> dict[str, Any]:
             raise ValueError(f"{where}: clip id must be a non-empty string")
         if not isinstance(clip, dict):
             raise ValueError(f"{where}: expected an object")
-        for level in LEVELS:
+        for level in levels:
             time_key = f"{level}_time"
             frame_key = f"{level}_frame"
             _validate_time(_require_text(clip.get(time_key), time_key, where), f"{where} {time_key}")
@@ -125,7 +129,7 @@ def validate_qa(data: Any, *, source: str = "QA") -> dict[str, Any]:
             _require_text(item.get("Dimension"), "Dimension", qwhere)
             questions += 1
         clips += 1
-    return {"clips": clips, "questions": questions, "levels": list(LEVELS)}
+    return {"clips": clips, "questions": questions, "levels": levels}
 
 
 def load_qa(path: str | Path) -> tuple[list[QARecord], dict[str, Any]]:
@@ -136,8 +140,8 @@ def load_qa(path: str | Path) -> tuple[list[QARecord], dict[str, Any]]:
     summary = validate_qa(data, source=str(path))
     records: list[QARecord] = []
     for clip_id, clip in data.items():
-        times = {level: clip[f"{level}_time"] for level in LEVELS}
-        frames = {level: clip[f"{level}_frame"] for level in LEVELS}
+        times = {level: clip[f"{level}_time"] for level in summary["levels"]}
+        frames = {level: clip[f"{level}_frame"] for level in summary["levels"]}
         for q_index, item in enumerate(clip["Q&A"]):
             records.append(
                 QARecord(

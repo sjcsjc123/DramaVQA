@@ -77,6 +77,10 @@ def load_input(args):
     validator = (validate_qa if args.task in ("single-point", "ablation") else
                  validate_multi_point if args.task == "multi-point" else validate_multi_hop)
     source_summary = validator(data)
+    if args.task in ("single-point", "ablation") and getattr(args, "level", None):
+        for clip_id, clip in data.items():
+            if not clip.get(f"{args.level}_time") or not clip.get(f"{args.level}_frame"):
+                raise ValueError(f"clip {clip_id}: missing {args.level}_time/{args.level}_frame")
     selected = select_questions(data, args.limit)
     if not selected:
         raise ValueError("the selected input contains no questions")
@@ -102,7 +106,7 @@ def build_parser():
         p.add_argument("--image-root", type=Path, help="frame output root; default: OUTPUT_DIR/images")
         p.add_argument("--sample-frames", type=int, default=8)
         p.add_argument("--target-width", type=int, default=392)
-        p.add_argument("--level", choices=("L2", "L3", "L4", "L5"))
+        p.add_argument("--level", choices=("L2", "L3", "L4", "L5", "L6"))
         p.add_argument("--subtitles", choices=("text", "burn", "none"), default="text")
         p.add_argument("--use-rendered-video", action="store_true")
         p.add_argument("--model", help="served model ID")

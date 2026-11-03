@@ -35,6 +35,16 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layou
     (subtitle_dir / f"{episode:04d}.json").write_text(json.dumps({
         "object_list": {"0": {"start_frame": 0, "end_frame": 49, "text": "visible dialogue"}}
     }))
+    face_dir = media_root / "face_data"
+    face_dir.mkdir()
+    (face_dir / f"{episode:04d}.json").write_text(json.dumps({"object_list": {
+        str(i): {"start_frame": i, "end_frame": i,
+                 "id_list": {"0": {"name": "Alice", "score": 0.99}},
+                 "geometry": {"active_frame_list": {"0": {"box": {
+                     "left": 1, "top": 20, "right": 40, "bottom": 50}}}}}
+        for i in range(50)
+    }}))
+    # No speaker_data/.workspace/new_roles_map.json is provided.
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
          "testsrc=size=64x64:rate=25:duration=2", "-c:v", "ffv1",
