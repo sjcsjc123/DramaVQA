@@ -36,7 +36,7 @@ Run each experiment in three steps:
 
 The examples use ten questions and eight frames. Replace `my-model` and the API
 address with your model service. Set `OPENAI_API_KEY` if authentication is
-required. For Chinese labels, set `EVAL_FONT_PATH` to a Chinese-capable font file.
+required.
 
 ### Single-point
 
