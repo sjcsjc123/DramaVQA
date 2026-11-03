@@ -12,18 +12,29 @@ import pytest
 from SinglePointEvalOpen import legacy_compatible_runner as compatibility
 
 
-@pytest.mark.parametrize("drama,episode", [("sample_drama", 1), ("breaking_bad", 9)])
-def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode):
+@pytest.mark.parametrize("engine_module", ["SinglePointEvalOpen.legacy_compatible_runner", "AblationEvalOpen.ask_vllm"])
+@pytest.mark.parametrize("layout", ["versioned", "flat", "rendered"])
+@pytest.mark.parametrize("drama,episode", [("the_knockout", 1), ("breaking_bad", 9)])
+def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layout, engine_module):
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         pytest.skip("ffmpeg and ffprobe are required for source-video extraction")
     pytest.importorskip("cv2")
     pytest.importorskip("tqdm")
 
-    video_dir = tmp_path / "videos" / drama / "video_data" / "v1"
+    media_root = tmp_path / "videos" / drama
+    video_dir = media_root / ("face_video_data" if layout == "rendered" else "video_data")
+    if layout == "versioned":
+        video_dir = video_dir / "v1"
     video_dir.mkdir(parents=True)
-    (video_dir.parent / "version.json").write_text(
-        json.dumps({"video_step": {"active_version": "v1"}}), encoding="utf-8"
-    )
+    if layout == "versioned":
+        (video_dir.parent / "version.json").write_text(
+            json.dumps({"video_step": {"active_version": "v1"}}), encoding="utf-8"
+        )
+    subtitle_dir = media_root / "subtitle_data"
+    subtitle_dir.mkdir()
+    (subtitle_dir / f"{episode:04d}.json").write_text(json.dumps({
+        "object_list": {"0": {"start_frame": 0, "end_frame": 49, "text": "visible dialogue"}}
+    }))
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
          "testsrc=size=64x64:rate=25:duration=2", "-c:v", "ffv1",
@@ -41,24 +52,35 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode):
          "Dimension": "Object Presence"}
         for index in range(2)
     ]
-    qa_path = tmp_path / "questions.json"  # Filename need not contain the drama.
+    qa_path = tmp_path / (f"{drama}.json" if engine_module == "AblationEvalOpen.ask_vllm"
+                          else "questions.json")
     qa_path.write_text(json.dumps({"1": clip}), encoding="utf-8")
+    if engine_module == "AblationEvalOpen.ask_vllm":
+        from AblationEvalOpen.qa_adapter import convert_ablation_qa
+        qa_path.write_text(json.dumps(convert_ablation_qa({"1": clip})), encoding="utf-8")
 
     image_root = tmp_path / f"{drama}_outputs"  # Parent contains the drama name.
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parents[1])
     subprocess.run(
-        [sys.executable, "-m", "SinglePointEvalOpen.legacy_compatible_runner",
+        [sys.executable, "-m", engine_module,
          "--drama", drama, "--question_path", str(qa_path),
          "--video_path", str(tmp_path / "videos"), "--image_path", str(image_root),
          "--sample_frames", "4", "--level", "L2", "--only_gen_img",
-         "--no_render_subtitle", "--model_name", "fixture", "--serving_mode", "local"],
+         "--no_render_subtitle", "--subtitle_text", "--model_name", "fixture", "--serving_mode", "local"]
+        + (["--use_rendered_video"] if layout == "rendered" else []),
         cwd=tmp_path, env=env, check=True, capture_output=True, text=True,
     )
 
     render_dir = (image_root / "L2" / "4" / "results.1" / "img_data" / drama
                   / window.replace(":", "-") / "render")
     assert len(list(render_dir.glob("*.jpg"))) == 4
+    subtitles = json.loads((render_dir.parent / "subtitles.json").read_text())
+    assert len(subtitles) == 4
+    assert set(subtitles.values()) == {"visible dialogue"}
+
+    if engine_module == "AblationEvalOpen.ask_vllm":
+        return
 
     engine = compatibility.LLMInference.__new__(compatibility.LLMInference)
     engine.question_path = str(qa_path)

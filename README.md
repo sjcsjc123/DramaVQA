@@ -133,22 +133,17 @@ hf download 198808xc/drama_bench_data --repo-type dataset \
 
 Replace the include pattern for another drama. To download the complete media repository, omit `--include`. Video downloads can be large; download every episode required by the selected context windows, including intermediate episodes for contexts that span multiple episodes.
 
-The evaluator expects a media root containing drama directories with versioned media and metadata:
+The evaluator expects a media root containing drama directories with flat media and metadata directories:
 
 ```text
 data/drama_bench_data/<drama>/
-├── video_data/
-│   ├── version.json
-│   └── <active-version>/0001.mp4
-├── face_data/
-│   ├── version.json
-│   └── <active-version>/0001.json
-└── subtitle_data/
-    ├── version.json
-    └── <active-version>/0001.json
+├── video_data/0001.mp4
+├── face_video_data/0001.mp4
+├── face_data/0001.json
+└── subtitle_data/0001.json
 ```
 
-`--video-root` points to the parent of the drama directories. Face and subtitle metadata support the benchmark's annotated visual inputs and text subtitles. See [source data and rendering](evaluate/README.md#source-data-and-rendering) for version selection, continuous episode numbering, and pre-rendered videos.
+`--video-root` points to the parent of the drama directories. Face and subtitle metadata support the benchmark's annotated visual inputs and text subtitles. See [source data and rendering](evaluate/README.md#source-data-and-rendering) for legacy layout compatibility, continuous episode numbering, and pre-rendered videos.
 
 ## Evaluation
 
