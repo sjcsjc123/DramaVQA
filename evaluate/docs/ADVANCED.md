@@ -118,14 +118,14 @@ python -m pip install ./evaluate
 python -m SinglePointEvalOpen.legacy_compatible_runner \
   --drama the_knockout --question_path DramaVQA/Bench_Data_mini_2000/the_knockout.json \
   --video_path data/drama_bench_data --image_path runs/legacy/images \
-  --sample_frames 8 --level L2 --model_name my-vl-model \
+  --sample_frames 8 --level L3 --model_name my-vl-model \
   --serving_mode local --only_gen_img --limit 10
 
 # Stage 2: start an OpenAI-compatible model server, then evaluate.
 python -m SinglePointEvalOpen.legacy_compatible_runner \
   --drama the_knockout --question_path DramaVQA/Bench_Data_mini_2000/the_knockout.json \
   --image_path runs/legacy/images --result_path runs/legacy/results \
-  --sample_frames 8 --level L2 --model_name my-vl-model \
+  --sample_frames 8 --level L3 --model_name my-vl-model \
   --serving_mode local --port 8000 --use_render_info --limit 10
 ```
 
@@ -193,7 +193,7 @@ python -m SinglePointEvalOpen.conan_runner \
   --conan-eval /path/to/models/Conan/Conan-Eval \
   --model-path /path/to/models/Conan/Conan-7B \
   --python /path/to/conda/Conan/bin/python \
-  --drama the_knockout --level L2 --sample-frames 8 \
+  --drama the_knockout --level L3 --sample-frames 8 \
   --image-subdir results.w392_nosub --gpu-ids 0 --num-processes 1
 ```
 

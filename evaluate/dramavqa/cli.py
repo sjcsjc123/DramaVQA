@@ -106,7 +106,7 @@ def build_parser():
         p.add_argument("--image-root", type=Path, help="frame output root; default: OUTPUT_DIR/images")
         p.add_argument("--sample-frames", type=int, default=8)
         p.add_argument("--target-width", type=int, default=392)
-        p.add_argument("--level", choices=("L2", "L3", "L4", "L5", "L6"))
+        p.add_argument("--level", choices=("L3", "L4", "L5", "L6"))
         p.add_argument("--subtitles", choices=("text", "burn", "none"), default="text")
         p.add_argument("--use-rendered-video", action="store_true")
         p.add_argument("--model", help="served model ID")
@@ -189,7 +189,7 @@ def main(argv=None):
     if args.limit < 0 or min(args.sample_frames, args.target_width, args.num_workers, args.max_tokens, args.api_timeout) <= 0:
         parser.error("limit must be nonnegative; other numeric limits must be positive")
     multi = args.task in ("multi-point", "multi-hop", "source-q1", "source-q2")
-    args.level = args.level or ("L3" if multi else "L2")
+    args.level = args.level or "L3"
     if multi and (args.level != "L3" or args.subtitles != "text"):
         parser.error("multi-scene evaluation uses L3 and text subtitles")
     if multi and args.command == "prepare" and args.image_root:

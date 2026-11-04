@@ -3220,7 +3220,8 @@ def main(args):
                          help='[low,medium,unspecified,high,ultra_high]')
     parser.add_argument('--level',
                          type=str,
-                         default='L2',
+                         default='L3',
+                         choices=('L3', 'L4', 'L5', 'L6'),
                          help='Context window level; L6 covers the full drama, including all seasons.')
     parser.add_argument('--caption_path',
                          type=str,

@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-path", type=Path, required=True)
     parser.add_argument("--python", type=Path, required=True, help="Python in Conan's environment")
     parser.add_argument("--drama", required=True)
-    parser.add_argument("--level", default="L2", choices=("L2", "L3", "L4", "L5", "L6"))
+    parser.add_argument("--level", default="L3", choices=("L3", "L4", "L5", "L6"))
     parser.add_argument("--sample-frames", type=int, default=8)
     parser.add_argument("--image-subdir", default="results.w392_nosub")
     parser.add_argument("--gpu-ids", default="0")

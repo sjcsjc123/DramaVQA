@@ -70,13 +70,13 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layou
         [sys.executable, "-m", "SinglePointEvalOpen.legacy_compatible_runner",
          "--drama", drama, "--question_path", str(qa_path),
          "--video_path", str(tmp_path / "videos"), "--image_path", str(image_root),
-         "--sample_frames", "4", "--level", "L2", "--only_gen_img",
+         "--sample_frames", "4", "--level", "L3", "--only_gen_img",
          "--no_render_subtitle", "--subtitle_text", "--model_name", "fixture", "--serving_mode", "local"]
         + (["--use_rendered_video"] if layout == "rendered" else []),
         cwd=tmp_path, env=env, check=True, capture_output=True, text=True,
     )
 
-    render_dir = (image_root / "L2" / "4" / "results.1" / "img_data" / drama
+    render_dir = (image_root / "L3" / "4" / "results.1" / "img_data" / drama
                   / window.replace(":", "-") / "render")
     assert len(list(render_dir.glob("*.jpg"))) == 4
     subtitles = json.loads((render_dir.parent / "subtitles.json").read_text())
@@ -85,7 +85,7 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layou
 
     engine = compatibility.LLMInference.__new__(compatibility.LLMInference)
     engine.question_path = str(qa_path)
-    engine.level = "L2"
+    engine.level = "L3"
     engine.sample_frames = 4
     engine.limit = 0
     engine.shard_index = 0
