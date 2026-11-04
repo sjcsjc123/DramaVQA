@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 from SinglePointEvalOpen.qa_format import validate_qa
 from MultiPointEvalOpen.qa_format import validate_multi_point
@@ -37,10 +37,8 @@ def select_questions(data, limit):
     return selected
 
 
-def resolve_qa_path(args, group):
-    """Resolve an explicit input or the checkout's DramaVQA question directory."""
-    if args.qa is not None:
-        return args.qa
+def resolve_data_root(args):
+    """Locate the question collection root."""
     if args.data_root is not None:
         root = args.data_root.expanduser().resolve()
     else:
@@ -53,6 +51,14 @@ def resolve_qa_path(args, group):
         if root is None:
             raise ValueError("Cannot locate the repository's DramaVQA/ directory. "
                              "Pass --data-root /path/to/DramaVQA or --qa FILE.")
+    return root
+
+
+def resolve_qa_path(args, group):
+    """Resolve an explicit input or the checkout's DramaVQA question directory."""
+    if args.qa is not None:
+        return args.qa
+    root = resolve_data_root(args)
     path = root / group / f"{args.drama}.json"
     if not path.is_file():
         raise ValueError(f"Question file not found: {path}. Use the exact JSON filename "
@@ -94,15 +100,15 @@ def build_parser():
         p = sub.add_parser(name, help={"validate": "validate QA without a model",
             "prepare": "generate model input frames", "run": "evaluate prepared inputs"}[name])
         p.add_argument("--task", choices=TASKS, required=True)
-        p.add_argument("--qa", type=Path, help="explicit JSON or dataset ZIP; overrides --data-root")
+        p.add_argument("--qa", type=Path, help="JSON or dataset ZIP; with --drama all also accepts a QA directory; overrides --data-root")
         p.add_argument("--data-root", type=Path, help="question-data directory containing Bench_Data, Multi-Point, etc.; default: checkout DramaVQA/")
-        p.add_argument("--drama", required=True)
+        p.add_argument("--drama", required=True, help="drama name or all for locally downloaded dramas")
         p.add_argument("--subset", default="Bench_Data_mini_2000",
                        choices=("Bench_Data", "Bench_Data_mini_2000", "Training_Set"))
-        p.add_argument("--limit", type=int, default=0, help="maximum questions, not clips; 0 means all")
+        p.add_argument("--limit", type=int, default=0, help="maximum questions per drama, not clips; 0 means all")
         p.add_argument("--output-dir", type=Path, help="dedicated directory for this task and model")
-        p.add_argument("--video-root", type=Path, help="parent of <drama>/video_data")
-        p.add_argument("--image-root", type=Path, help="frame output root; default: OUTPUT_DIR/images")
+        p.add_argument("--video-root", type=Path, help="media root containing drama folders; selects local dramas for all")
+        p.add_argument("--image-root", type=Path, help="frame output root; default: OUTPUT_DIR/images; all appends a drama subdirectory")
         p.add_argument("--sample-frames", type=int, default=8)
         p.add_argument("--target-width", type=int, default=392)
         p.add_argument("--level", choices=("L3", "L4", "L5", "L6"))
@@ -197,21 +203,29 @@ def main(argv=None):
         parser.error("--thinking on applies only to API single-point evaluation")
     if args.backend == "conan" and args.task != "single-point":
         parser.error("Conan currently supports only single-point")
+    if args.command != "validate":
+        if not args.output_dir:
+            parser.error("--output-dir is required")
+        if args.command == "prepare" and not args.video_root:
+            parser.error("prepare requires --video-root")
+        if args.command == "run" and args.backend == "openai" and not args.model:
+            parser.error("run requires --model")
+        if args.command == "run" and args.backend == "conan" and not all((args.conan_eval, args.model_path, args.python)):
+            parser.error("Conan requires --conan-eval, --model-path and --python")
+    if args.drama == "all":
+        return run_all(args, parser)
+    return run_one(args, parser)
+
+
+def run_one(args, parser):
+    """Execute one drama using the existing evaluator and completeness checks."""
     try:
         data, source, selected = load_input(args)
-    except (ValueError, OSError, KeyError) as exc:
+    except (ValueError, OSError, KeyError, BadZipFile) as exc:
         parser.error(str(exc))
     print(json.dumps({"source": source, "selected": selected}, ensure_ascii=False), flush=True)
     if args.command == "validate":
         return 0
-    if not args.output_dir:
-        parser.error("--output-dir is required")
-    if args.command == "prepare" and not args.video_root:
-        parser.error("prepare requires --video-root")
-    if args.command == "run" and args.backend == "openai" and not args.model:
-        parser.error("run requires --model")
-    if args.command == "run" and args.backend == "conan" and not all((args.conan_eval, args.model_path, args.python)):
-        parser.error("Conan requires --conan-eval, --model-path and --python")
     encoded = json.dumps(data, ensure_ascii=False, sort_keys=True).encode()
     fingerprint = {"qa_sha256": hashlib.sha256(encoded).hexdigest(), "task": args.task,
         "drama": args.drama, "level": args.level, "sample_frames": args.sample_frames,
@@ -252,3 +266,100 @@ def main(argv=None):
     (args.output_dir / "frames_summary.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report), flush=True)
     return 0 if report["complete"] else 1
+
+
+def discover_dramas(args):
+    """Match local media dramas to the selected QA collection, in name order."""
+    group = {"multi-point": "Multi-Point", "multi-hop": "Multi-Hop"}.get(args.task, args.subset)
+    if args.qa is not None and args.qa.suffix.lower() == ".zip":
+        with ZipFile(args.qa) as archive:
+            members = [Path(name) for name in archive.namelist()
+                       if name.endswith('.json') and Path(name).parent.name == group]
+        names = [member.stem for member in members]
+        if len(names) != len(set(names)):
+            raise ValueError(f"ZIP contains duplicate drama files for {group}")
+        selected = {name: args.qa for name in names}
+    else:
+        if args.qa is not None:
+            if not args.qa.is_dir():
+                raise ValueError("--drama all requires a QA directory or ZIP; a single JSON needs its drama name")
+            folder = args.qa / group if (args.qa / group).is_dir() else args.qa
+        else:
+            folder = resolve_data_root(args) / group
+        selected = {path.stem: path for path in sorted(folder.glob('*.json')) if path.is_file()}
+    if args.video_root is not None:
+        if not args.video_root.is_dir():
+            raise ValueError(f"Video root not found: {args.video_root}")
+        media_dirs = ('video_data', 'face_video_data', 'video_face_data', 'video_face_rendered')
+        local = {path.name for path in args.video_root.iterdir() if path.is_dir()
+                 and any((path / directory).is_dir() for directory in media_dirs)}
+        selected = {name: path for name, path in selected.items() if name in local}
+    elif args.command == "run" and args.output_dir is not None:
+        manifest = args.output_dir / "batch_manifest.json"
+        if not manifest.is_file():
+            raise ValueError("--drama all requires --video-root, or an output directory prepared with --drama all")
+        previous = json.loads(manifest.read_text())
+        if previous.get("task") != args.task or previous.get("subset") != args.subset:
+            raise ValueError("Prepared batch belongs to a different task/subset; use the same settings")
+        names = previous.get("dramas")
+        if not isinstance(names, list) or not names or any(not isinstance(name, str) for name in names):
+            raise ValueError("Invalid prepared drama list; run prepare again")
+        missing = set(names) - set(selected)
+        if missing:
+            raise ValueError(f"Prepared dramas have no matching QA: {sorted(missing)}")
+        selected = {name: selected[name] for name in names}
+    else:
+        raise ValueError("--drama all requires --video-root to select locally downloaded dramas")
+    if not selected:
+        raise ValueError(f"No local drama directories have matching {group} question files")
+    if any(not re.fullmatch(r"[A-Za-z0-9_-]+", name) or name == "all" for name in selected):
+        raise ValueError("Question filenames must be valid drama names, excluding the reserved name all")
+    return dict(sorted(selected.items()))
+
+
+def run_all(args, parser):
+    """Run sequentially, isolate each drama's outputs, and report every failure."""
+    try:
+        dramas = discover_dramas(args)
+    except (ValueError, OSError, BadZipFile) as exc:
+        parser.error(str(exc))
+    if args.command == "prepare":
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        manifest = {"task": args.task, "subset": args.subset, "dramas": list(dramas),
+                    "video_root": str(args.video_root.resolve())}
+        (args.output_dir / "batch_manifest.json").write_text(json.dumps(manifest, indent=2))
+    rows = []
+    for drama, qa in dramas.items():
+        child = argparse.Namespace(**vars(args))
+        child.drama, child.qa = drama, qa
+        if args.output_dir is not None:
+            child.output_dir = args.output_dir / drama
+        if args.image_root is not None:
+            child.image_root = args.image_root / drama
+        print(f"[{args.command}] {drama}", flush=True)
+        row = {"drama": drama}
+        try:
+            code = run_one(child, parser)
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 1
+            row["error"] = "Drama failed input/settings validation; see the error above"
+        except (ValueError, OSError, KeyError) as exc:
+            code = 1
+            row["error"] = str(exc)
+        row.update(exit_code=code, complete=code == 0)
+        if child.output_dir is not None:
+            row["output_dir"] = str(child.output_dir)
+            summary_name = "summary.json" if args.command == "run" else "frames_summary.json"
+            summary_path = child.output_dir / summary_name
+            if code == 0 and args.command != "validate" and summary_path.is_file():
+                row["summary"] = json.loads(summary_path.read_text())
+        rows.append(row)
+    failed = sum(not row["complete"] for row in rows)
+    report = {"task": args.task, "command": args.command, "dramas": len(rows),
+              "successful": len(rows) - failed, "failed": failed,
+              "complete": failed == 0, "results": rows}
+    if args.output_dir is not None:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        (args.output_dir / f"batch_{args.command}_summary.json").write_text(json.dumps(report, indent=2))
+    print(json.dumps(report, ensure_ascii=False), flush=True)
+    return 1 if failed else 0
