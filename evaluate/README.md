@@ -38,6 +38,31 @@ The examples use ten questions and eight frames. Replace `my-model` and the API
 address with your model service. Set `OPENAI_API_KEY` if authentication is
 required.
 
+### Font download and configuration
+
+For Chinese labels/subtitles, use [Noto Sans CJK Regular (TTC)](https://github.com/notofonts/noto-cjk/blob/main/Sans/OTC/NotoSansCJK-Regular.ttc).
+For English-only labels/subtitles, use [Noto Sans Regular (TTF)](https://github.com/notofonts/noto-fonts/blob/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf).
+The evaluator accepts both TTC and TTF files; English does not require a TTC.
+Use the CJK font for mixed Chinese/English text. An English-only font does not
+provide Chinese glyphs.
+
+```bash
+mkdir -p fonts
+
+# Chinese or mixed Chinese/English.
+curl -fL https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTC/NotoSansCJK-Regular.ttc \
+  -o fonts/NotoSansCJK-Regular.ttc
+export EVAL_FONT_PATH="$(pwd)/fonts/NotoSansCJK-Regular.ttc"
+
+# English only: use this setting instead.
+curl -fL https://raw.githubusercontent.com/notofonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf \
+  -o fonts/NotoSans-Regular.ttf
+export EVAL_FONT_PATH="$(pwd)/fonts/NotoSans-Regular.ttf"
+```
+
+Choose one font setting before `prepare`; keep it for `run` if it renders labels
+or subtitles. Font files are downloaded separately and are not bundled with the code.
+
 ### Single-point
 
 **Step 1 — Validate questions.** The default input is
