@@ -5,7 +5,7 @@ the original module interfaces, whose `--limit` may count clips.
 
 
 This directory contains the open evaluation entry points for the current
-single-point, multi-point, multi-hop and paired-source QA files. It is
+single-point, multi-point and multi-hop QA files. It is
 intentionally separate from the historical evaluation scripts;
 the original `SingleHopEval` and `MultiPointEval` directories
 are not modified by this version.
@@ -19,8 +19,7 @@ The three task packages are `SinglePointEvalOpen`, `MultiPointEvalOpen`, and
 `MultiHopEvalOpen`. The historical multi-scene evaluator is copied into this directory;
 the new adapters change their QA input shape without changing scene ordering,
 answer extraction, or scoring. `SingleHopEval` is the name of an old directory
-for the single-point benchmark. The paired `source_q1`/`source_q2` controls
-below are a separate task.
+for the single-point benchmark.
 
 ## Paths for this GitHub checkout
 
@@ -35,11 +34,7 @@ module commands below still require explicit input paths.
 The supplied DramaVQA archive contains 3,200 multi-point questions (12 files) and 1,200
 multi-hop questions (12 files). Multi-point dimensions map to the old evaluator
 types `B_order`, `B_sort`, and `D_same`. The multi-hop rows also contain two
-source questions with options, answers, and L3 windows. The modes `source_q1`
-and `source_q2` evaluate each source question with the **same two scenes** as
-its paired multi-hop question. The public rows have no `q1_id` or `q2_id`, so
-these modes retain all 1,200 pairs rather than claiming the historical
-deduplicated-source metric.
+source scenes with L3 windows.
 
 Validate the tracked question files without downloading media:
 
@@ -68,23 +63,17 @@ python -m MultiPointEvalOpen.run_eval \
   --model my-served-model --base-url http://localhost:8000/v1
 ```
 
-Use `MultiHopEvalOpen.run_eval` with the same image layout for multi-hop. Give
-each mode a distinct output directory so its historical `results.json` and
-`raw_responses.jsonl` do not overwrite another mode:
+Use `MultiHopEvalOpen.run_eval` with the same image layout for multi-hop. Use a
+distinct output directory for each run:
 
 ```bash
 python -m MultiPointEvalOpen.prepare_frames \
   --qa DramaVQA/Multi-Hop/friends.json --kind multi_hop --drama friends \
   --video-root data/drama_bench_data --output-root runs/legacy/multi_hop
 python -m MultiHopEvalOpen.run_eval \
-  --qa DramaVQA/Multi-Hop/friends.json --drama friends --mode multi_hop \
+  --qa DramaVQA/Multi-Hop/friends.json --drama friends \
   --image-root runs/legacy/multi_hop/images/L3/256/results.w392_nosub/img_data \
   --output-dir runs/legacy/multi_hop/results/multi_hop/friends \
-  --model my-served-model
-python -m MultiHopEvalOpen.run_eval \
-  --qa DramaVQA/Multi-Hop/friends.json --drama friends --mode source_q2 \
-  --image-root runs/legacy/multi_hop/images/L3/256/results.w392_nosub/img_data \
-  --output-dir runs/legacy/multi_hop/results/source_q2/friends \
   --model my-served-model
 ```
 

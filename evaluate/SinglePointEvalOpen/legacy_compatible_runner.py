@@ -118,22 +118,25 @@ from PIL import Image, ImageFont, ImageDraw
 
 
 def load_render_font(size):
-    """Use the historical SimHei font when present, with an explicit fallback."""
+    """Use bundled Chinese/English fonts, with an optional user override."""
+    fonts = Path(__file__).parent / 'fonts'
     candidates = [
-        os.environ.get('EVAL_FONT_PATH'),
-        './fonts/SimHei.ttf',
-        str(Path(__file__).parent / 'fonts' / 'SimHei.ttf'),
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        (os.environ.get('EVAL_FONT_PATH'), 0),
+        (fonts / 'NotoSansCJK-Regular.ttc', 2),  # Simplified Chinese face in the collection.
+        (fonts / 'NotoSans-Regular.ttf', 0),
+        ('./fonts/SimHei.ttf', 0),
+        (fonts / 'SimHei.ttf', 0),
+        ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 0),
     ]
-    for path in candidates:
+    for path, index in candidates:
         if path and os.path.isfile(path):
             try:
-                return ImageFont.truetype(path, size)
+                return ImageFont.truetype(str(path), size, index=index)
             except (OSError, ImportError):
                 pass
     raise RuntimeError(
-        'No usable TrueType font found for face/subtitle rendering. '
-        'Install Pillow with FreeType and set EVAL_FONT_PATH to a font file.'
+        'No usable font found. Reinstall the package with its bundled fonts, '
+        'or set EVAL_FONT_PATH to a font file.'
     )
 
 try:

@@ -17,7 +17,7 @@ from MultiPointEvalOpen.qa_format import validate_multi_point
 from MultiHopEvalOpen.qa_format import validate_multi_hop
 from . import __version__
 
-TASKS = ("single-point", "multi-point", "multi-hop", "source-q1", "source-q2")
+TASKS = ("single-point", "multi-point", "multi-hop")
 
 
 def select_questions(data, limit):
@@ -61,8 +61,7 @@ def resolve_qa_path(args, group):
 
 
 def load_input(args):
-    group = {"multi-point": "Multi-Point", "multi-hop": "Multi-Hop",
-             "source-q1": "Multi-Hop", "source-q2": "Multi-Hop"}.get(args.task, args.subset)
+    group = {"multi-point": "Multi-Point", "multi-hop": "Multi-Hop"}.get(args.task, args.subset)
     qa_path = resolve_qa_path(args, group)
     if qa_path.suffix.lower() == ".zip":
         with ZipFile(qa_path) as archive:
@@ -138,7 +137,7 @@ def image_data_root(args):
 def engine_command(args, qa):
     cmd = [sys.executable, "-m"]
     common = ["--qa", str(qa), "--drama", args.drama]
-    if args.task in ("multi-point", "multi-hop", "source-q1", "source-q2"):
+    if args.task in ("multi-point", "multi-hop"):
         if args.command == "prepare":
             return cmd + ["MultiPointEvalOpen.prepare_frames"] + common + [
                 "--kind", "multi_point" if args.task == "multi-point" else "multi_hop",
@@ -151,7 +150,7 @@ def engine_command(args, qa):
             "--model", args.model, "--base-url", args.base_url,
             "--num-workers", str(args.num_workers), "--max-tokens", str(args.max_tokens),
             "--api-timeout", str(args.api_timeout),
-        ] + (["--mode", args.task.replace("-", "_")] if args.task != "multi-point" else [])
+        ]
     if args.backend == "conan" and args.command == "run":
         return cmd + ["SinglePointEvalOpen.conan_runner"] + common + [
             "--image-root", str(frame_root(args)), "--output-root", str(args.output_dir / "results"),
@@ -188,7 +187,7 @@ def main(argv=None):
         parser.error("drama must contain only letters, digits, underscores or hyphens")
     if args.limit < 0 or min(args.sample_frames, args.target_width, args.num_workers, args.max_tokens, args.api_timeout) <= 0:
         parser.error("limit must be nonnegative; other numeric limits must be positive")
-    multi = args.task in ("multi-point", "multi-hop", "source-q1", "source-q2")
+    multi = args.task in ("multi-point", "multi-hop")
     args.level = args.level or "L3"
     if multi and (args.level != "L3" or args.subtitles != "text"):
         parser.error("multi-scene evaluation uses L3 and text subtitles")

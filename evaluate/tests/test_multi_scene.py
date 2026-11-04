@@ -53,20 +53,15 @@ def test_multi_point_three_types_and_stable_ids():
     assert validate_multi_point(rows)["questions"] == 3
 
 
-def test_multi_hop_and_paired_sources_keep_same_two_windows():
+def test_multi_hop_keeps_question_and_two_windows():
     row = multi_hop_row()
-    ids = []
-    for mode, question, answer in (("multi_hop", "What follows?", "A"),
-                                   ("source_q1", "First source?", "A"),
-                                   ("source_q2", "Second source?", "B")):
-        adapted = normalize_multi_hop([row], mode=mode)["multi_hop"]
-        ids.extend(adapted)
-        item = next(iter(adapted.values()))
-        assert (item["Question"], item["Answer"], item["L3_time"]) == (
-            question, answer, [LATE, EARLY]
-        )
-    assert len(set(ids)) == 1  # join results across the three output directories
-    assert validate_multi_hop([row])["paired_source_questions"] == 2
+    adapted = normalize_multi_hop([row])["multi_hop"]
+    item = next(iter(adapted.values()))
+    assert (item["Question"], item["Answer"], item["L3_time"]) == (
+        "What follows?", "A", [LATE, EARLY]
+    )
+    assert set(adapted) == set(normalize_multi_hop([row])["multi_hop"])
+    assert validate_multi_hop([row])["questions"] == 1
 
 
 def test_multi_scene_validation_rejects_bad_window_or_source_answer():
@@ -77,7 +72,7 @@ def test_multi_scene_validation_rejects_bad_window_or_source_answer():
     bad_hop = multi_hop_row()
     bad_hop["src_questions_info"]["Answers"][1] = "Z"
     with pytest.raises(ValueError, match="absent from Options"):
-        normalize_multi_hop([bad_hop], mode="source_q2")
+        normalize_multi_hop([bad_hop])
 
 
 def test_unchanged_multi_scene_evaluator_reads_images_and_sorts_scenes(tmp_path: Path):
@@ -87,7 +82,7 @@ def test_unchanged_multi_scene_evaluator_reads_images_and_sorts_scenes(tmp_path:
         folder = tmp_path / "images" / "sample_drama" / l3_time_to_dir_name(window) / "render"
         folder.mkdir(parents=True)
         Image.new("RGB", (28, 28), "red").save(folder / "0.jpg")
-    data = normalize_multi_hop([multi_hop_row()], mode="source_q2")
+    data = normalize_multi_hop([multi_hop_row()])
     messages_seen = []
     evaluator = MultiPointEvaluator(
         base_url="http://localhost:8000/v1", api_key="EMPTY", model="test-model",
@@ -97,7 +92,7 @@ def test_unchanged_multi_scene_evaluator_reads_images_and_sorts_scenes(tmp_path:
 
     def fake_call(messages, _key):
         messages_seen.append(messages)
-        return "<B>", 1, "stop"
+        return "<A>", 1, "stop"
 
     evaluator._call_api = fake_call
     evaluator.run("unused.json", "sample_drama", qa_data=data)

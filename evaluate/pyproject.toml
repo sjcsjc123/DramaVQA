@@ -25,5 +25,8 @@ include-package-data = false
 pythonpath = ["."]
 testpaths = ["tests"]
 
+[tool.setuptools.package-data]
+SinglePointEvalOpen = ["fonts/*.ttc", "fonts/*.ttf", "fonts/FONT_NOTICES.txt"]
+
 [tool.setuptools.exclude-package-data]
 "*" = ["__pycache__/*", "*.pyc", "*.pyo"]

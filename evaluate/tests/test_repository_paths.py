@@ -22,8 +22,6 @@ def checkout(tmp_path, monkeypatch):
     ('single-point', 'Training_Set', 'Training_Set'),
     ('multi-point', 'Bench_Data_mini_2000', 'Multi-Point'),
     ('multi-hop', 'Bench_Data_mini_2000', 'Multi-Hop'),
-    ('source-q1', 'Bench_Data_mini_2000', 'Multi-Hop'),
-    ('source-q2', 'Bench_Data_mini_2000', 'Multi-Hop'),
 ])
 def test_explicit_root_selects_task_group(tmp_path, task, subset, group, monkeypatch):
     from unittest.mock import Mock
