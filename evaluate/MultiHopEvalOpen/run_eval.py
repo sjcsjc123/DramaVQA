@@ -1,4 +1,4 @@
-"""Evaluate public multi-hop or paired single-hop QA with identical scene input."""
+"""Evaluate public multi-hop QA using its two source scenes."""
 
 from __future__ import annotations
 
@@ -7,17 +7,16 @@ import json
 import os
 from pathlib import Path
 
-from .qa_format import MODES, load_multi_hop
+from .qa_format import load_multi_hop
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--qa", type=Path, required=True, help="one Multi-Hop JSON or DramaVQA.zip")
     parser.add_argument("--drama", help="drama name; required for ZIP input")
-    parser.add_argument("--mode", choices=MODES, default="multi_hop")
     parser.add_argument("--validate-only", action="store_true", help="check QA without images or a server")
     parser.add_argument("--image-root", type=Path, help="img_data root containing <drama>/<window>/render/")
-    parser.add_argument("--output-dir", type=Path, help="use a distinct directory for each mode")
+    parser.add_argument("--output-dir", type=Path, help="directory for evaluation results")
     parser.add_argument("--model")
     parser.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", "http://localhost:8000/v1"))
     parser.add_argument("--limit", type=int, default=0)
@@ -29,8 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reasoning-effort", choices=("low", "high", "max"))
     args = parser.parse_args(argv)
     drama = args.drama or (args.qa.stem if args.qa.suffix.lower() == ".json" else None)
-    qa_data, summary = load_multi_hop(args.qa, drama=drama, mode=args.mode)
-    print(json.dumps({"drama": drama, "mode": args.mode, **summary}, ensure_ascii=False), flush=True)
+    qa_data, summary = load_multi_hop(args.qa, drama=drama)
+    print(json.dumps({"drama": drama, **summary}, ensure_ascii=False), flush=True)
     if args.validate_only:
         return 0
     if not args.image_root or not args.output_dir or not args.model:

@@ -1,8 +1,4 @@
-"""Adapt public Multi-Hop rows and their paired single-hop source questions.
-
-The two source windows remain paired for every row. The public format has no
-source question IDs, so this module does not collapse repeated source QAs.
-"""
+"""Adapt public Multi-Hop rows to the multi-scene evaluator input."""
 
 from __future__ import annotations
 
@@ -17,7 +13,6 @@ from zipfile import ZipFile
 from MultiPointEvalOpen.qa_format import _OPTION, _text, _window
 
 
-MODES = ("multi_hop", "source_q1", "source_q2")
 _DRAMA = re.compile(r"[A-Za-z0-9_.-]+")
 
 
@@ -56,39 +51,25 @@ def validate_multi_hop(data: Any, *, source: str = "Multi-Hop") -> dict[str, Any
             if not isinstance(time, dict):
                 raise ValueError(f"{source_where}: Time must be an object")
             _window(time.get("L3_time"), source_where)
-    return {"questions": len(data), "dimensions": dict(dimensions), "paired_source_questions": len(data) * 2}
+    return {"questions": len(data), "dimensions": dict(dimensions)}
 
 
-def normalize_multi_hop(data: Any, *, mode: str = "multi_hop", source: str = "Multi-Hop") -> dict[str, dict[str, dict[str, Any]]]:
-    """Produce the historical ``multi_hop -> id -> QA`` container.
+def normalize_multi_hop(data: Any, *, source: str = "Multi-Hop") -> dict[str, dict[str, dict[str, Any]]]:
+    """Produce the historical ``multi_hop -> id -> QA`` container."""
 
-    In ``source_q1``/``source_q2`` mode, the source question sees the same two
-    L3 scenes as its paired multi-hop question for a controlled comparison.
-    """
-
-    if mode not in MODES:
-        raise ValueError(f"unsupported mode {mode!r}")
     validate_multi_hop(data, source=source)
     output: dict[str, dict[str, dict[str, Any]]] = {"multi_hop": {}}
     for index, row in enumerate(data):
         info = row["src_questions_info"]
-        if mode == "multi_hop":
-            question, options, answer, dimension = (
-                row["Question"], row["Options"], row["Answer"], row["Dimension"]
-            )
-        else:
-            hop = 0 if mode == "source_q1" else 1
-            question, options, answer, dimension = (
-                info["Question"][hop], info["Options"][hop],
-                info["Answers"][hop], info["Dimension"][hop],
-            )
+        question, options, answer, dimension = (
+            row["Question"], row["Options"], row["Answer"], row["Dimension"]
+        )
         item = {
             "Question": question,
             "Options": options,
             "Answer": answer,
             "L3_time": [time["L3_time"] for time in info["Time"]],
             "Dimension": dimension,
-            "source_mode": mode,
             "src_questions_info": info,
         }
         # Include the entire paired row so repeated source questions with
@@ -103,8 +84,7 @@ def normalize_multi_hop(data: Any, *, mode: str = "multi_hop", source: str = "Mu
     return output
 
 
-def load_multi_hop(path: str | Path, *, drama: str | None = None,
-                   mode: str = "multi_hop") -> tuple[dict[str, dict[str, dict[str, Any]]], dict[str, Any]]:
+def load_multi_hop(path: str | Path, *, drama: str | None = None) -> tuple[dict[str, dict[str, dict[str, Any]]], dict[str, Any]]:
     path = Path(path)
     if path.suffix.lower() == ".zip":
         if not drama or _DRAMA.fullmatch(drama) is None:
@@ -120,4 +100,4 @@ def load_multi_hop(path: str | Path, *, drama: str | None = None,
         data = json.loads(path.read_text(encoding="utf-8"))
         source = str(path)
     summary = validate_multi_hop(data, source=source)
-    return normalize_multi_hop(data, mode=mode, source=source), summary
+    return normalize_multi_hop(data, source=source), summary

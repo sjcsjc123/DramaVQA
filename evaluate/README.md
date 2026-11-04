@@ -1,19 +1,38 @@
 # DramaVQA Evaluation
 
-Run the commands below from the repository root. Requires Python 3.10+,
-FFmpeg/ffprobe, and a running OpenAI-compatible vision-language model service.
+Run all commands from the repository root.
 
-## Install and download data
+## Environment installation
+
+Requires Python 3.10+ and FFmpeg/ffprobe. On Ubuntu/Debian, install FFmpeg
+with `sudo apt install ffmpeg`.
 
 ```bash
 python -m pip install ./evaluate huggingface_hub
+```
+
+Chinese and English Noto fonts are bundled and loaded automatically for labels
+and subtitles.
+
+## Download data
+
+Download videos and metadata from
+[Hugging Face](https://huggingface.co/datasets/198808xc/drama_bench_data).
+Download one drama (replace `the_knockout` as needed):
+
+```bash
 hf download 198808xc/drama_bench_data --repo-type dataset \
   --include 'the_knockout/*' --local-dir data/drama_bench_data
 ```
 
-Questions are included in `DramaVQA/`. Download videos and metadata from
-[Hugging Face](https://huggingface.co/datasets/198808xc/drama_bench_data).
-Replace `the_knockout` to download another drama. The local media layout is:
+Download the complete dataset:
+
+```bash
+hf download 198808xc/drama_bench_data --repo-type dataset \
+  --local-dir data/drama_bench_data
+```
+
+The downloaded media layout is:
 
 ```text
 data/drama_bench_data/<drama>/
@@ -23,81 +42,76 @@ data/drama_bench_data/<drama>/
 └── subtitle_data/0001.json
 ```
 
-`--video-root` points to the parent of the drama directories. Episode numbers
-continue across seasons within one drama directory.
+## Evaluation overview
 
-## Evaluate
+- **Main benchmark (single-point):** evaluate detailed understanding of one scene
+  with L3–L6 context windows.
+- **Multi-point:** evaluate relationships across multiple scenes.
+- **Multi-hop:** combine information from two scenes to answer a reasoning question.
 
-Run each experiment in three steps:
+Each task uses three commands:
 
-1. `validate`: check the question format and selected question count; no model is called.
-2. `prepare`: extract the frames and subtitle inputs needed by those questions.
-3. `run`: send the prepared inputs to your model service and save predictions and scores.
+1. `validate`: check question format and selected question count, without calling a model.
+2. `prepare`: extract the required frames and subtitle inputs.
+3. `run`: send prepared inputs to the model service and save predictions and scores.
 
-The examples use ten questions and eight frames. Replace `my-model` and the API
-address with your model service. Set `OPENAI_API_KEY` if authentication is
-required.
+## Quick start
 
-### Font download and configuration
+The examples use ten questions and eight frames. Omit `--limit` from all steps
+to evaluate all questions, and set `--sample-frames` to the required frame count.
+Start an OpenAI-compatible vision-language model service before `run`. Replace
+`my-model` with its served model ID and `--base-url` with its API endpoint. Set
+`OPENAI_API_KEY` if authentication is required.
 
-For Chinese labels/subtitles, use [Noto Sans CJK Regular (TTC)](https://github.com/notofonts/noto-cjk/blob/main/Sans/OTC/NotoSansCJK-Regular.ttc).
-For English-only labels/subtitles, use [Noto Sans Regular (TTF)](https://github.com/notofonts/noto-fonts/blob/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf).
-The evaluator accepts both TTC and TTF files; English does not require a TTC.
-Use the CJK font for mixed Chinese/English text. An English-only font does not
-provide Chinese glyphs.
-
-```bash
-mkdir -p fonts
-
-# Chinese or mixed Chinese/English.
-curl -fL https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTC/NotoSansCJK-Regular.ttc \
-  -o fonts/NotoSansCJK-Regular.ttc
-export EVAL_FONT_PATH="$(pwd)/fonts/NotoSansCJK-Regular.ttc"
-
-# English only: use this setting instead.
-curl -fL https://raw.githubusercontent.com/notofonts/noto-fonts/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf \
-  -o fonts/NotoSans-Regular.ttf
-export EVAL_FONT_PATH="$(pwd)/fonts/NotoSans-Regular.ttf"
-```
-
-Choose one font setting before `prepare`; keep it for `run` if it renders labels
-or subtitles. Font files are downloaded separately and are not bundled with the code.
-
-### Single-point
-
-**Step 1 — Validate questions.** The default input is
-`DramaVQA/Bench_Data_mini_2000/the_knockout.json`.
+### • Main benchmark (single-point)
 
 ```bash
+# Step 1: validate questions.
 dramavqa validate --task single-point --drama the_knockout --limit 10
-```
 
-**Step 2 — Prepare video frames and subtitles.**
-
-```bash
+# Step 2: prepare frames and subtitles.
 dramavqa prepare --task single-point --drama the_knockout --limit 10 \
   --level L3 --sample-frames 8 --video-root data/drama_bench_data \
   --output-dir runs/single-point
-```
 
-**Step 3 — Run model evaluation.**
-
-```bash
+# Step 3: run model evaluation.
 dramavqa run --task single-point --drama the_knockout --limit 10 \
   --level L3 --sample-frames 8 --output-dir runs/single-point \
   --model my-model --base-url http://127.0.0.1:8000/v1
 ```
 
-### Multi-point
+The default question set is Mini. Add `--subset Bench_Data` to all three
+commands for the full benchmark. Change `--level` to L4, L5, or L6 for other
+context windows.
 
-The input is `DramaVQA/Multi-Point/the_knockout.json`. Each question uses its
-source scenes with L3 context windows.
+**All local dramas:** use `--drama all` to process downloaded drama folders
+under `--video-root` that have matching questions in the selected set.
+`--limit 10` selects ten questions **per drama**.
+
+```bash
+dramavqa validate --task single-point --drama all --limit 10 \
+  --video-root data/drama_bench_data --output-dir runs/single-point-all
+
+dramavqa prepare --task single-point --drama all --limit 10 \
+  --level L3 --sample-frames 8 --video-root data/drama_bench_data \
+  --output-dir runs/single-point-all
+
+dramavqa run --task single-point --drama all --limit 10 \
+  --level L3 --sample-frames 8 --output-dir runs/single-point-all \
+  --model my-model --base-url http://127.0.0.1:8000/v1
+```
+
+The `run` command reuses the drama list saved by `prepare`, so `--video-root`
+can be omitted at inference. Outputs are separated under `<output-dir>/<drama>/`.
+The same workflow applies to multi-point and multi-hop.
+
+### • Multi-point
 
 ```bash
 # Step 1: validate questions.
 dramavqa validate --task multi-point --drama the_knockout --limit 10
 
-# Step 2: prepare all source-scene frames and subtitles.
+# Step 2: prepare all source-scene inputs.
 dramavqa prepare --task multi-point --drama the_knockout --limit 10 \
   --level L3 --sample-frames 8 --video-root data/drama_bench_data \
   --output-dir runs/multi-point
@@ -108,52 +122,7 @@ dramavqa run --task multi-point --drama the_knockout --limit 10 \
   --model my-model --base-url http://127.0.0.1:8000/v1
 ```
 
-### Single-hop source-question controls
-
-Evaluate the first or second source question of each multi-hop pair with
-`source-q1` or `source-q2`. Both controls use the same two L3 scenes as the
-multi-hop question. They read `DramaVQA/Multi-Hop/the_knockout.json`; results
-are counted per pair, without deduplicating repeated source questions.
-These commands are paired-source controls, not a separate single-hop dataset.
-
-**First source question:**
-
-```bash
-# Step 1: validate questions.
-dramavqa validate --task source-q1 --drama the_knockout --limit 10
-
-# Step 2: prepare the paired scene inputs.
-dramavqa prepare --task source-q1 --drama the_knockout --limit 10 \
-  --level L3 --sample-frames 8 --video-root data/drama_bench_data \
-  --output-dir runs/source-q1
-
-# Step 3: evaluate the first source question.
-dramavqa run --task source-q1 --drama the_knockout --limit 10 \
-  --level L3 --sample-frames 8 --output-dir runs/source-q1 \
-  --model my-model --base-url http://127.0.0.1:8000/v1
-```
-
-**Second source question:**
-
-```bash
-# Step 1: validate questions.
-dramavqa validate --task source-q2 --drama the_knockout --limit 10
-
-# Step 2: prepare the paired scene inputs.
-dramavqa prepare --task source-q2 --drama the_knockout --limit 10 \
-  --level L3 --sample-frames 8 --video-root data/drama_bench_data \
-  --output-dir runs/source-q2
-
-# Step 3: evaluate the second source question.
-dramavqa run --task source-q2 --drama the_knockout --limit 10 \
-  --level L3 --sample-frames 8 --output-dir runs/source-q2 \
-  --model my-model --base-url http://127.0.0.1:8000/v1
-```
-
-### Multi-hop
-
-The input is `DramaVQA/Multi-Hop/the_knockout.json`. Evaluate the combined
-multi-hop question using its two source scenes.
+### • Multi-hop
 
 ```bash
 # Step 1: validate questions.
@@ -170,26 +139,34 @@ dramavqa run --task multi-hop --drama the_knockout --limit 10 \
   --model my-model --base-url http://127.0.0.1:8000/v1
 ```
 
-### Common settings
+### Key arguments
 
-Keep the drama, question input, limit, level, frame count, and subtitle settings
-identical between `prepare` and `run`. Use a separate output directory for each
-task, model, and setting. To evaluate all questions, omit `--limit` from all three
-steps and set the required `--sample-frames`.
+| Argument | Default | Description |
+| --- | --- | --- |
+| `--task` | Required | `single-point`, `multi-point`, or `multi-hop`. |
+| `--drama` | Required | Drama name, e.g. `the_knockout`; `all` selects local dramas with matching QA. |
+| `--video-root` | Required for `prepare` and batch `validate` | Media download directory, e.g. `data/drama_bench_data`. |
+| `--level` | `L3` | Single-point context: L3–L6. Other tasks use L3. |
+| `--sample-frames` | `8` | Frames sampled per context window. |
+| `--output-dir` | Required for `prepare` and `run` | Use a separate directory for each task, model, and setting. |
+| `--model` | Required for `run` | Served model ID, e.g. `my-model`. |
+| `--base-url` | `http://127.0.0.1:8000/v1` | OpenAI-compatible API endpoint; can also be set with `OPENAI_BASE_URL`. |
 
-`--drama` matches the QA filename stem and media directory. Add
-`--subset Bench_Data` to all three single-point commands for the full benchmark,
-or use `--qa /path/to/questions.json` to select an input file explicitly.
-
-The single-point evaluation tracks are L3–L6; the examples above use L3.
-Multi-point, paired-source controls, and multi-hop use L3 source-scene windows.
+Keep question selection, context, sampling, subtitle, and output settings
+consistent between `prepare` and `run`. See `dramavqa run --help` for all options.
 
 ## Results
 
-Outputs are saved under `--output-dir`: `inputs/` contains selected QA,
-`images/` contains frames, and `results/` contains evaluation results.
-Check `frames_summary.json` after preparation and `summary.json` after inference.
-Missing, skipped, randomly guessed, or truncated answers cause a nonzero exit
-status; answer accuracy is reported separately in the evaluation results.
+Outputs are saved under `--output-dir`:
 
-Run `dramavqa prepare --help` or `dramavqa run --help` for all options.
+- `inputs/`: selected questions.
+- `images/`: prepared frames.
+- `results/`: predictions and evaluation results.
+
+Check `frames_summary.json` for frame preparation and `summary.json` for
+completion and valid-answer counts. Predictions and scoring outputs are saved
+in `results/`.
+
+Batch summaries are saved in the parent output directory as
+`batch_validate_summary.json`, `batch_prepare_summary.json`, and
+`batch_run_summary.json` after their respective stages.
