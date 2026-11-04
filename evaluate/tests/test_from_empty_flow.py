@@ -12,10 +12,9 @@ import pytest
 from SinglePointEvalOpen import legacy_compatible_runner as compatibility
 
 
-@pytest.mark.parametrize("engine_module", ["SinglePointEvalOpen.legacy_compatible_runner", "AblationEvalOpen.ask_vllm"])
 @pytest.mark.parametrize("layout", ["versioned", "flat", "rendered"])
 @pytest.mark.parametrize("drama,episode", [("the_knockout", 1), ("breaking_bad", 9)])
-def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layout, engine_module):
+def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layout):
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
         pytest.skip("ffmpeg and ffprobe are required for source-video extraction")
     pytest.importorskip("cv2")
@@ -62,18 +61,13 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layou
          "Dimension": "Object Presence"}
         for index in range(2)
     ]
-    qa_path = tmp_path / (f"{drama}.json" if engine_module == "AblationEvalOpen.ask_vllm"
-                          else "questions.json")
+    qa_path = tmp_path / "questions.json"
     qa_path.write_text(json.dumps({"1": clip}), encoding="utf-8")
-    if engine_module == "AblationEvalOpen.ask_vllm":
-        from AblationEvalOpen.qa_adapter import convert_ablation_qa
-        qa_path.write_text(json.dumps(convert_ablation_qa({"1": clip})), encoding="utf-8")
-
     image_root = tmp_path / f"{drama}_outputs"  # Parent contains the drama name.
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parents[1])
     subprocess.run(
-        [sys.executable, "-m", engine_module,
+        [sys.executable, "-m", "SinglePointEvalOpen.legacy_compatible_runner",
          "--drama", drama, "--question_path", str(qa_path),
          "--video_path", str(tmp_path / "videos"), "--image_path", str(image_root),
          "--sample_frames", "4", "--level", "L2", "--only_gen_img",
@@ -88,9 +82,6 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layou
     subtitles = json.loads((render_dir.parent / "subtitles.json").read_text())
     assert len(subtitles) == 4
     assert set(subtitles.values()) == {"visible dialogue"}
-
-    if engine_module == "AblationEvalOpen.ask_vllm":
-        return
 
     engine = compatibility.LLMInference.__new__(compatibility.LLMInference)
     engine.question_path = str(qa_path)

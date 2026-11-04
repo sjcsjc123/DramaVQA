@@ -5,19 +5,18 @@ the original module interfaces, whose `--limit` may count clips.
 
 
 This directory contains the open evaluation entry points for the current
-single-point, multi-point, multi-hop, paired-source and ablation QA files. It is
+single-point, multi-point, multi-hop and paired-source QA files. It is
 intentionally separate from the historical evaluation scripts;
-the original `SingleHopEval`, `AblationExp`, and `MultiPointEval` directories
+the original `SingleHopEval` and `MultiPointEval` directories
 are not modified by this version.
 After installing this repository, its
-four Python packages are available through the documented `python -m ...`
+three task packages are available through the documented `python -m ...`
 commands.
 The evaluator follows the repository MIT license, reproduced in LICENSE.
 External data, media and model implementations retain their own terms.
 
-The package has four importable task packages: `SinglePointEvalOpen`,
-`MultiPointEvalOpen`, `MultiHopEvalOpen`, and `AblationEvalOpen`. The historical
-multi-scene evaluator and ablation evaluator are copied into this directory;
+The three task packages are `SinglePointEvalOpen`, `MultiPointEvalOpen`, and
+`MultiHopEvalOpen`. The historical multi-scene evaluator is copied into this directory;
 the new adapters change their QA input shape without changing scene ordering,
 answer extraction, or scoring. `SingleHopEval` is the name of an old directory
 for the single-point benchmark. The paired `source_q1`/`source_q2` controls
@@ -94,44 +93,6 @@ when set; local defaults are `http://localhost:8000/v1` and `EMPTY`. The
 multi-scene evaluator preserves its chronological scene concatenation and
 original scene labels. Its existing random-choice fallback after an
 unextractable answer also remains unchanged.
-
-## Single-point ablations
-
-The `AblationEvalOpen` adapter accepts the flat single-point QA or the
-`Bench_Data` / `Bench_Data_mini_2000` members of `DramaVQA.zip`. The six
-historical modes remain: `exp1_burn` (burned subtitles), `exp2_nosub` (text
-subtitles), `exp3_gallery` (face gallery plus raw video frames), `exp4_speaker`
-(speaker labels), `exp5_nosub` (face-box frames without subtitles), and
-`exp6_langonly` (question and options only). The copied evaluator contains no
-hard-coded credentials; use a local model server and pass its served name.
-
-```bash
-python -m AblationEvalOpen.run_eval \
-  --qa DramaVQA/Bench_Data_mini_2000/friends.json --drama friends --mode exp2_nosub \
-  --video-root data/drama_bench_data --image-path runs/legacy/images/L3/256/results.w392_nosub/img_data/friends \
-  --output-root runs/legacy/ablation --model my-served-model --port 8000 \
-  --sample-frames 256 --use-render-info
-```
-
-`--image-path` may instead be a parent image root without the drama name; the
-legacy evaluator then appends its own `L3/<frames>/results.../img_data/<drama>`
-path. Point each mode at frames made with that mode's subtitle/face policy.
-For `exp3_gallery`, first use `--prepare-only` with the same options as the
-evaluation command to write the adapted QA, then prepare its cache:
-
-```bash
-python -m AblationEvalOpen.prepare_local_inputs prepare-gallery \
-  --qa-root runs/legacy/ablation/inputs/ablation_qa \
-  --video-root data/drama_bench_data \
-  --gallery-root runs/legacy/ablation/gallery_cache \
-  --dramas friends --levels L3 --frames 256 --width 392
-```
-
-The gallery path, QA, video, frame count and width must match the evaluation
-run. `exp4_speaker` requires speaker metadata
-and supports `--preflight-only`. `exp6_langonly` does not read frame images.
-Set `EVAL_FONT_PATH` to the historical subtitle font when exact visual parity
-is needed; the package does not bundle that font.
 
 ## Current QA format
 

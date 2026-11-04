@@ -15,8 +15,7 @@ from SinglePointEvalOpen.qa_format import load_qa, validate_qa
 from dramavqa.cli import main
 
 
-@pytest.mark.parametrize('module', ['SinglePointEvalOpen.legacy_compatible_runner',
-                                    'AblationEvalOpen.ask_vllm'])
+@pytest.mark.parametrize('module', ['SinglePointEvalOpen.legacy_compatible_runner'])
 @pytest.mark.parametrize('mapping', [None, '{invalid', '[]', '{"Alice": "Alicia"}'])
 def test_optional_role_map(module, mapping, tmp_path):
     cls = importlib.import_module(module).LLMInference

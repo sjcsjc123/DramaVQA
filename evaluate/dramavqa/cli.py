@@ -17,7 +17,7 @@ from MultiPointEvalOpen.qa_format import validate_multi_point
 from MultiHopEvalOpen.qa_format import validate_multi_hop
 from . import __version__
 
-TASKS = ("single-point", "multi-point", "multi-hop", "source-q1", "source-q2", "ablation")
+TASKS = ("single-point", "multi-point", "multi-hop", "source-q1", "source-q2")
 
 
 def select_questions(data, limit):
@@ -74,10 +74,10 @@ def load_input(args):
             data = json.loads(archive.read(candidates[0]))
     else:
         data = json.loads(qa_path.read_text(encoding="utf-8"))
-    validator = (validate_qa if args.task in ("single-point", "ablation") else
+    validator = (validate_qa if args.task == "single-point" else
                  validate_multi_point if args.task == "multi-point" else validate_multi_hop)
     source_summary = validator(data)
-    if args.task in ("single-point", "ablation") and getattr(args, "level", None):
+    if args.task == "single-point" and getattr(args, "level", None):
         for clip_id, clip in data.items():
             if not clip.get(f"{args.level}_time") or not clip.get(f"{args.level}_frame"):
                 raise ValueError(f"clip {clip_id}: missing {args.level}_time/{args.level}_frame")
@@ -114,13 +114,10 @@ def build_parser():
         p.add_argument("--num-workers", type=int, default=1)
         p.add_argument("--max-tokens", type=int, help="output token limit; default: 1000 for API, 4000 for Conan")
         p.add_argument("--api-timeout", type=float, default=120)
-        p.add_argument("--mode", choices=("exp1_burn", "exp2_nosub", "exp3_gallery", "exp4_speaker", "exp5_nosub", "exp6_langonly"),
-                       help="required for ablation; determines subtitle/face policy")
-        p.add_argument("--speaker-root", type=Path)
         p.add_argument("--prompt-mode", choices=("full",), default="full",
                        help="only full is supported; preserves the original prompt")
         p.add_argument("--thinking", choices=("on", "off"), default="off",
-                       help="full prompt reasoning instructions for API single-point/ablation; independent of model-side ENABLE_THINKING")
+                       help="full prompt reasoning instructions for API single-point; independent of model-side ENABLE_THINKING")
         p.add_argument("--backend", choices=("openai", "conan"), default="openai")
         p.add_argument("--conan-eval", type=Path)
         p.add_argument("--model-path", type=Path, help="Conan checkpoint directory")
@@ -165,17 +162,6 @@ def engine_command(args, qa):
             "--drama-image-map", f"{args.drama}={args.drama}",
             "--max-new-tokens", str(args.max_tokens),
         ]
-    if args.task == "ablation":
-        return cmd + ["AblationEvalOpen.run_eval"] + common + [
-            "--mode", args.mode, "--output-root", str(args.output_dir / "results"),
-            "--video-root", str(args.video_root or Path(".")),
-            "--image-path", str(frame_root(args)), "--model", args.model or "frame-preparation",
-            "--level", args.level, "--sample-frames", str(args.sample_frames),
-            "--target-width", str(args.target_width), "--num-workers", str(args.num_workers),
-            "--use-render-info",
-        ] + (["--prepare-only" if args.mode == "exp3_gallery" else "--only-gen-img"] if args.command == "prepare" else []) + (
-            ["--speaker-root", str(args.speaker_root)] if args.speaker_root else []) + (
-            ["--use-rendered-video"] if args.use_rendered_video else [])
     result = cmd + ["SinglePointEvalOpen.legacy_compatible_runner",
         "--question_path", str(qa), "--drama", args.drama,
         "--image_path", str(frame_root(args)), "--result_path", str(args.output_dir / "results"),
@@ -203,17 +189,13 @@ def main(argv=None):
     if args.limit < 0 or min(args.sample_frames, args.target_width, args.num_workers, args.max_tokens, args.api_timeout) <= 0:
         parser.error("limit must be nonnegative; other numeric limits must be positive")
     multi = args.task in ("multi-point", "multi-hop", "source-q1", "source-q2")
-    args.level = args.level or ("L3" if multi or args.task == "ablation" else "L2")
+    args.level = args.level or ("L3" if multi else "L2")
     if multi and (args.level != "L3" or args.subtitles != "text"):
         parser.error("multi-scene evaluation uses L3 and text subtitles")
     if multi and args.command == "prepare" and args.image_root:
         parser.error("multi-scene preparation writes OUTPUT_DIR/images; omit --image-root")
-    if args.task == "ablation" and not args.mode:
-        parser.error("ablation requires --mode")
-    if args.task == "ablation":
-        args.subtitles = "burn" if args.mode == "exp1_burn" else "text" if args.mode in ("exp2_nosub", "exp3_gallery", "exp4_speaker") else "none"
     if args.thinking == "on" and (multi or args.backend == "conan"):
-        parser.error("--thinking on applies only to API single-point and ablation evaluation")
+        parser.error("--thinking on applies only to API single-point evaluation")
     if args.backend == "conan" and args.task != "single-point":
         parser.error("Conan currently supports only single-point")
     try:
@@ -234,7 +216,7 @@ def main(argv=None):
     encoded = json.dumps(data, ensure_ascii=False, sort_keys=True).encode()
     fingerprint = {"qa_sha256": hashlib.sha256(encoded).hexdigest(), "task": args.task,
         "drama": args.drama, "level": args.level, "sample_frames": args.sample_frames,
-        "target_width": args.target_width, "subtitles": args.subtitles, "mode": args.mode,
+        "target_width": args.target_width, "subtitles": args.subtitles, "mode": None,
         "use_rendered_video": args.use_rendered_video, "questions": selected["questions"]}
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = args.output_dir / "input_manifest.json"
@@ -266,20 +248,8 @@ def main(argv=None):
         (args.output_dir / "summary.json").write_text(json.dumps(report, indent=2))
         print(json.dumps(report), flush=True)
         return 0 if report["complete"] else 1
-    if args.task == "ablation" and args.mode == "exp3_gallery":
-        gallery_command = [sys.executable, "-m", "AblationEvalOpen.prepare_local_inputs", "prepare-gallery",
-            "--qa-root", str(args.output_dir / "results/inputs/ablation_qa"),
-            "--video-root", str(args.video_root),
-            "--gallery-root", str(args.output_dir / "results/gallery_cache"),
-            "--dramas", args.drama, "--levels", args.level,
-            "--frames", str(args.sample_frames), "--width", str(args.target_width)]
-        result = subprocess.run(gallery_command, env=env, check=False)
-        report = {"complete": result.returncode == 0, "kind": "validated-gallery-cache"}
-        (args.output_dir / "frames_summary.json").write_text(json.dumps(report, indent=2))
-        return result.returncode
     from .verify import verify_frames
-    report = verify_frames(data, image_data_root(args) / args.drama, args.level, args.sample_frames,
-                           language_only=args.task == "ablation" and args.mode == "exp6_langonly")
+    report = verify_frames(data, image_data_root(args) / args.drama, args.level, args.sample_frames)
     (args.output_dir / "frames_summary.json").write_text(json.dumps(report, indent=2))
     print(json.dumps(report), flush=True)
     return 0 if report["complete"] else 1

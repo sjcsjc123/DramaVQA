@@ -1749,7 +1749,7 @@ class LLMInference:
             frame = base64_frames[idx]
 
             # ABLATE_BURN_SUBTITLE=1: Burn subtitles.json text to screen during online
-            # processing for alignment with old code's "burn subtitle" mode in ablation
+            # Render burned-in subtitles when requested.
             # experiments
             if os.environ.get('ABLATE_BURN_SUBTITLE') == '1':
                 if not hasattr(self, '_ablate_sub_info'):

@@ -20,7 +20,6 @@ def checkout(tmp_path, monkeypatch):
     ('single-point', 'Bench_Data_mini_2000', 'Bench_Data_mini_2000'),
     ('single-point', 'Bench_Data', 'Bench_Data'),
     ('single-point', 'Training_Set', 'Training_Set'),
-    ('ablation', 'Bench_Data', 'Bench_Data'),
     ('multi-point', 'Bench_Data_mini_2000', 'Multi-Point'),
     ('multi-hop', 'Bench_Data_mini_2000', 'Multi-Hop'),
     ('source-q1', 'Bench_Data_mini_2000', 'Multi-Hop'),

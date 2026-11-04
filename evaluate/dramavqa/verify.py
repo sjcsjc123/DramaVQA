@@ -61,10 +61,8 @@ def verify_results(root: Path, expected: int) -> dict:
             "result_files": [str(p) for p in files]}
 
 
-def verify_frames(data, root: Path, level: str, count: int, *, language_only=False):
+def verify_frames(data, root: Path, level: str, count: int):
     """Require every selected window to have its complete set of sampled images."""
-    if language_only:
-        return {"complete": True, "windows": 0, "reason": "language-only mode"}
     if isinstance(data, list):
         windows = {t["L3_time"] for q in data for t in q["src_questions_info"]["Time"]}
     else:
