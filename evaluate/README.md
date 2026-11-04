@@ -12,8 +12,7 @@ python -m pip install ./evaluate huggingface_hub
 ```
 
 Chinese and English Noto fonts are bundled and loaded automatically for labels
-and subtitles. Their license is included in
-[FONT_NOTICES.txt](SinglePointEvalOpen/fonts/FONT_NOTICES.txt).
+and subtitles.
 
 ## Download data
 
