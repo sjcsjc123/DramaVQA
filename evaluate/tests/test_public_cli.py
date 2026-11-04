@@ -37,7 +37,6 @@ def test_validate_all_input_before_limiting(tmp_path):
 def test_frames_missing_is_failure(tmp_path):
     data = json.loads(FIXTURE.read_text())
     assert not verify_frames(data, tmp_path, "L2", 8)["complete"]
-    assert verify_frames(data, tmp_path, "L2", 8, language_only=True)["complete"]
 
 
 def test_result_presence_does_not_hide_skips_or_guesses(tmp_path):
@@ -107,7 +106,7 @@ def test_model_change_requires_separate_results(tmp_path, monkeypatch):
 
 def test_all_shipped_python_sources_compile():
     root = Path(__file__).parents[1]
-    for package in ("dramavqa", "SinglePointEvalOpen", "MultiPointEvalOpen", "MultiHopEvalOpen", "AblationEvalOpen"):
+    for package in ("dramavqa", "SinglePointEvalOpen", "MultiPointEvalOpen", "MultiHopEvalOpen"):
         for path in (root / package).glob("*.py"):
             compile(path.read_text(), str(path), "exec")
 
@@ -156,15 +155,13 @@ def test_removed_prompt_modes_are_rejected(mode):
     assert exc.value.code == 2
 
 
-@pytest.mark.parametrize("module_name", ["SinglePointEvalOpen.legacy_compatible_runner", "AblationEvalOpen.ask_vllm"])
+@pytest.mark.parametrize("module_name", ["SinglePointEvalOpen.legacy_compatible_runner"])
 @pytest.mark.parametrize("thinking", [False, True])
 @pytest.mark.parametrize("group", [False, True])
 def test_full_prompt_variants(module_name, thinking, group, monkeypatch):
     import importlib
     module = importlib.import_module(module_name)
     monkeypatch.setattr(module, "THINK_MODE", thinking)
-    if module_name.startswith("Ablation"):
-        monkeypatch.setattr(module, "ABLATION_MODE", "exp2_nosub")
     content = module.GROUP_MESSAGE_SYSTEM if group else module.MESSAGE_SYSTEM
     expected = module._think_prompt() if thinking else (
         (module._group_message_system_head() if group else module._message_system_head())
@@ -175,17 +172,9 @@ def test_full_prompt_variants(module_name, thinking, group, monkeypatch):
     assert not hasattr(module, "_strict_prompt")
 
 
-@pytest.mark.parametrize("thinking", [False, True])
-def test_full_language_only_prompt(thinking, monkeypatch):
-    from AblationEvalOpen import ask_vllm as module
-    monkeypatch.setattr(module, "THINK_MODE", thinking)
-    monkeypatch.setattr(module, "ABLATION_MODE", "exp6_langonly")
-    expected = module._langonly_think_prompt() if thinking else (
-        module._langonly_message_system_head() + module.MESSAGE_SYSTEM_FORMAT + module.MESSAGE_SYSTEM_EXAMPLE)
-    assert module.resolve_system_content(module.MESSAGE_SYSTEM) == expected
 
 
-@pytest.mark.parametrize("module_name", ["SinglePointEvalOpen.legacy_compatible_runner", "AblationEvalOpen.ask_vllm"])
+@pytest.mark.parametrize("module_name", ["SinglePointEvalOpen.legacy_compatible_runner"])
 @pytest.mark.parametrize("usage", [None, SimpleNamespace(total_tokens=None), SimpleNamespace(total_tokens=12)])
 def test_optional_usage_does_not_drop_valid_answer(module_name, usage, capsys):
     import importlib

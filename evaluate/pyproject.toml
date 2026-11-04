@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dramavqa-evaluate"
 version = "0.2.4"
-description = "DramaVQA single-point, multi-point, multi-hop and ablation evaluation adapters"
+description = "DramaVQA single-point, multi-point, multi-hop evaluation adapters"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.23", "Pillow>=9.0", "openai>=1.0", "opencv-python-headless>=4.8", "tqdm>=4.65"]
@@ -18,7 +18,7 @@ legacy = []
 test = ["pytest>=7"]
 
 [tool.setuptools]
-packages = ["dramavqa", "SinglePointEvalOpen", "MultiPointEvalOpen", "MultiHopEvalOpen", "AblationEvalOpen"]
+packages = ["dramavqa", "SinglePointEvalOpen", "MultiPointEvalOpen", "MultiHopEvalOpen"]
 include-package-data = false
 
 [tool.pytest.ini_options]

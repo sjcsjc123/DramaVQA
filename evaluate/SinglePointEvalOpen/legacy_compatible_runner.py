@@ -1749,7 +1749,7 @@ class LLMInference:
             frame = base64_frames[idx]
 
             # ABLATE_BURN_SUBTITLE=1: Burn subtitles.json text to screen during online
-            # processing for alignment with old code's "burn subtitle" mode in ablation
+            # Render burned-in subtitles when requested.
             # experiments
             if os.environ.get('ABLATE_BURN_SUBTITLE') == '1':
                 if not hasattr(self, '_ablate_sub_info'):
@@ -2867,6 +2867,22 @@ class LLMInference:
         total_sec = h * 3600 + m * 60 + s + int(ms) / 1000.0
         return total_sec
 
+    def _load_role_mapping(self, drama_root):
+        """Read optional role-name overrides; retain face labels when unavailable."""
+        speaker_path = os.path.join(drama_root, 'speaker_data')
+        speaker_dir = self._resolve_versioned_dir(
+            speaker_path, ('speaker_recognition_step', 'speaker_processing_step'))
+        path = os.path.join(speaker_dir or speaker_path, '.workspace/new_roles_map.json')
+        try:
+            with open(path, encoding='utf-8') as stream:
+                mapping = json.load(stream)
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(mapping, dict):
+            return {}
+        return {key: value for key, value in mapping.items()
+                if isinstance(key, str) and isinstance(value, str)}
+
     def draw_box(self, frame_face_data, img, thred, sea_epi, scale_factor):
         # if scale_factor != 1:
         #     img = self.resize_img(img, scale_factor)
@@ -2878,19 +2894,7 @@ class LLMInference:
         pil_img = Image.fromarray(img)
         draw = ImageDraw.Draw(pil_img)
 
-        speaker_path = os.path.join(self._get_drama_root(sea_epi), 'speaker_data')
-        speak_map_path = None
-        try:
-            speaker_dir = self._resolve_versioned_dir(speaker_path, 'speaker_recognition_step')
-            speak_map_path = os.path.join(speaker_dir or speaker_path, '.workspace/new_roles_map.json')
-        except:
-            pass
-
-        if speak_map_path is not None:
-            with open(speak_map_path) as f:
-                mapping_name = json.load(f)
-        else:
-            mapping_name = {}
+        mapping_name = self._load_role_mapping(self._get_drama_root(sea_epi))
 
         episode = sea_epi.split('_')[1].zfill(4)
         for face in frame_face_data:
@@ -3216,7 +3220,8 @@ def main(args):
                          help='[low,medium,unspecified,high,ultra_high]')
     parser.add_argument('--level',
                          type=str,
-                         default='L2',
+                         default='L3',
+                         choices=('L3', 'L4', 'L5', 'L6'),
                          help='Context window level; L6 covers the full drama, including all seasons.')
     parser.add_argument('--caption_path',
                          type=str,
