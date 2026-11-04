@@ -5,15 +5,17 @@ FFmpeg/ffprobe, and a running OpenAI-compatible vision-language model service.
 
 ## Install and download data
 
+Download videos and metadata from
+[Hugging Face](https://huggingface.co/datasets/198808xc/drama_bench_data).
+Replace `the_knockout` in the command below to download another drama.
+
 ```bash
 python -m pip install ./evaluate huggingface_hub
 hf download 198808xc/drama_bench_data --repo-type dataset \
   --include 'the_knockout/*' --local-dir data/drama_bench_data
 ```
 
-Questions are included in `DramaVQA/`. Download videos and metadata from
-[Hugging Face](https://huggingface.co/datasets/198808xc/drama_bench_data).
-Replace `the_knockout` to download another drama. The local media layout is:
+After downloading, the local media layout is:
 
 ```text
 data/drama_bench_data/<drama>/
@@ -23,18 +25,22 @@ data/drama_bench_data/<drama>/
 └── subtitle_data/0001.json
 ```
 
-`--video-root` points to the parent of the drama directories. Episode numbers
-continue across seasons within one drama directory.
+The `prepare` commands below use `--video-root data/drama_bench_data` to read
+media from this download directory. Replace that path if you save data elsewhere.
 
 ## Evaluate
 
-Run each experiment in three steps:
+Single-point evaluates details within one scene; multi-point evaluates relationships
+across scenes; single-hop controls test the two source questions separately;
+multi-hop combines information from two scenes for reasoning.
+Follow the commands for your task in three steps:
 
 1. `validate`: check the question format and selected question count; no model is called.
 2. `prepare`: extract the frames and subtitle inputs needed by those questions.
 3. `run`: send the prepared inputs to your model service and save predictions and scores.
 
-The examples use ten questions and eight frames. Replace `my-model` and the API
+The examples use ten questions and eight frames; omit `--limit` in all steps
+to evaluate all questions. Replace `my-model` and the API
 address with your model service. Set `OPENAI_API_KEY` if authentication is
 required.
 
@@ -170,19 +176,21 @@ dramavqa run --task multi-hop --drama the_knockout --limit 10 \
   --model my-model --base-url http://127.0.0.1:8000/v1
 ```
 
-### Common settings
+### Common parameters
 
-Keep the drama, question input, limit, level, frame count, and subtitle settings
-identical between `prepare` and `run`. Use a separate output directory for each
-task, model, and setting. To evaluate all questions, omit `--limit` from all three
-steps and set the required `--sample-frames`.
+| Parameter | Description | Example / default |
+| --- | --- | --- |
+| `--task` | Evaluation task. | `single-point`, `multi-point`, `source-q1`, `source-q2`, or `multi-hop` |
+| `--drama` | Drama name matching the QA filename stem and media directory. | `the_knockout` |
+| `--video-root` | Media download directory used by `prepare`; contains the drama folders. | `data/drama_bench_data` |
+| `--level` | Video context window. Single-point supports L3–L6; other tasks use L3. | Default: `L3` |
+| `--sample-frames` | Frames sampled per context window. | Default: `8`; set the frame count required by your experiment. |
+| `--output-dir` | Directory for prepared inputs and results. Use a separate directory for each task, model, and setting. | `runs/single-point` |
+| `--model` | Served model ID, required by `run`. | `my-model` |
+| `--base-url` | OpenAI-compatible model API address. | `http://127.0.0.1:8000/v1` |
 
-`--drama` matches the QA filename stem and media directory. Add
-`--subset Bench_Data` to all three single-point commands for the full benchmark,
-or use `--qa /path/to/questions.json` to select an input file explicitly.
-
-The single-point evaluation tracks are L3–L6; the examples above use L3.
-Multi-point, paired-source controls, and multi-hop use L3 source-scene windows.
+Keep question selection, context, sampling, subtitle, and output settings
+consistent between `prepare` and `run`.
 
 ## Results
 
