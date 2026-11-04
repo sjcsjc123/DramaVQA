@@ -42,8 +42,6 @@ data/drama_bench_data/<drama>/
 └── subtitle_data/0001.json
 ```
 
-Use this download directory as `--video-root` in the preparation commands below.
-
 ## Evaluation overview
 
 - **Main benchmark (single-point):** evaluate detailed understanding of one scene
@@ -65,7 +63,7 @@ Start an OpenAI-compatible vision-language model service before `run`. Replace
 `my-model` with its served model ID and `--base-url` with its API endpoint. Set
 `OPENAI_API_KEY` if authentication is required.
 
-### Main benchmark (single-point)
+### • Main benchmark (single-point)
 
 ```bash
 # Step 1: validate questions.
@@ -107,7 +105,7 @@ The `run` command reuses the drama list saved by `prepare`, so `--video-root`
 can be omitted at inference. Outputs are separated under `<output-dir>/<drama>/`.
 The same workflow applies to multi-point and multi-hop.
 
-### Multi-point
+### • Multi-point
 
 ```bash
 # Step 1: validate questions.
@@ -124,7 +122,7 @@ dramavqa run --task multi-point --drama the_knockout --limit 10 \
   --model my-model --base-url http://127.0.0.1:8000/v1
 ```
 
-### Multi-hop
+### • Multi-hop
 
 ```bash
 # Step 1: validate questions.
