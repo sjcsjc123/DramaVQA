@@ -12,7 +12,7 @@ are not modified by this version.
 After installing this repository, its
 three task packages are available through the documented `python -m ...`
 commands.
-The evaluator follows the repository MIT license, reproduced in LICENSE.
+The evaluator follows the repository [MIT license](../../LICENSE).
 External data, media and model implementations retain their own terms.
 
 The three task packages are `SinglePointEvalOpen`, `MultiPointEvalOpen`, and
