@@ -14,6 +14,9 @@ python -m pip install ./evaluate huggingface_hub
 Chinese and English Noto fonts are bundled and loaded automatically for labels
 and subtitles.
 
+For local vLLM deployment and automatic service recovery, see
+[deployment tools](tools/README.md).
+
 ## Download data
 
 Download videos and metadata from
