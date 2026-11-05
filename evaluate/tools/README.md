@@ -42,10 +42,6 @@ Stop the service and its watchdog with the same environment variables:
 bash evaluate/tools/deploy_vllm.sh --stop
 ```
 
-Keep `DEPLOY_ID` and `VLLM_LOG_DIR` for subsequent stop operations.
-Logs, process IDs, and instance state are saved in `VLLM_LOG_DIR`.
-Use a different deployment ID for each concurrent deployment.
-
 ## Watchdog
 
 `vllm_watchdog.sh` starts automatically after service readiness. It checks
@@ -62,24 +58,3 @@ Set these variables before deployment to change its behavior:
 | `WATCHDOG_MAX_RESTARTS` | `5` | Restart limit per instance and time window |
 | `WATCHDOG_RESTART_WINDOW` | `3600` | Restart accounting window, in seconds |
 | `WATCHDOG_INFER_PROBE` | `1` | Set to `0` to disable inference probes |
-
-## Check deployments after GPUs become idle
-
-The optional monitor waits for all expected GPUs to remain idle, then starts,
-requests a completion from, and stops each selected preset in sequence.
-It requires `nvidia-smi`. Weights are resolved from
-`<project-root>/models/<preset model directory>`; alternatively set
-`MODELS_ROOT`. This command runs in the foreground:
-
-```bash
-python evaluate/tools/monitor_gpu_deploy.py \
-  --python /path/to/vllm-env/bin/python \
-  --presets qwen3-vl-8b \
-  --expected-gpus 1 \
-  --state-dir results/deployment-check
-```
-
-Set `VLLM_TP_OVERRIDE=1` when checking on one GPU.
-Use `--check-only` to check configuration and GPU availability without launching
-models. The monitor saves `status.json` and deployment logs under `--state-dir`
-and returns a nonzero exit status if any deployment, completion, or cleanup fails.
