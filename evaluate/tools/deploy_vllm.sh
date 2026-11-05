@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)    dry_run=1; shift ;;
         --list)       printf '%s\n' "${!MODEL_PRESETS[@]}" | sort; exit 0 ;;
         -h|--help)    sed -n '2,10p' "$0" | sed 's/^# \?//'; exit 0 ;;
-        *) echo "未知参数: $1" >&2; exit 1 ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
 
@@ -93,23 +93,23 @@ resolve_vllm_cmd() {
             PYTHON="$_py"; break
         done
     fi
-    [ -n "${PYTHON:-}" ] || { log "ERROR: 找不到 python"; return 1; }
+    [ -n "${PYTHON:-}" ] || { log "ERROR: Python interpreter not found"; return 1; }
 
     VLLM_CMD=("${PYTHON}" -m vllm.entrypoints.cli.main)
-    log "启动方式: ${PYTHON} -m vllm.entrypoints.cli.main"
+    log "Launch command: ${PYTHON} -m vllm.entrypoints.cli.main"
     return 0
 }
 
 vllm_watchdog_start() {
     if [ "${VLLM_WATCHDOG:-1}" != "1" ]; then
-        log "看门狗已禁用 (VLLM_WATCHDOG=0)"
+        log "Watchdog disabled (VLLM_WATCHDOG=0)"
         return 0
     fi
     [ "${dry_run}" -eq 1 ] && return 0
 
     local wd_sh="${script_dir}/vllm_watchdog.sh"
     if [ ! -f "${wd_sh}" ]; then
-        log "WARN: 看门狗脚本不存在: ${wd_sh}，跳过"
+        log "WARN: Watchdog script not found: ${wd_sh}; skipping"
         return 0
     fi
 
@@ -119,8 +119,8 @@ vllm_watchdog_start() {
         MODEL_KEY="${MODEL_KEY}" PYTHON="${PYTHON:-}" CONDA_ENV_PREFIX="${CONDA_ENV_PREFIX:-}" \
         setsid nohup bash "${wd_sh}" >>"${wd_log}" 2>&1 &
     disown 2>/dev/null || true
-    log "看门狗已启动，日志: ${wd_log}"
-    log "  停止: DEPLOY_ID=${DEPLOY_ID} bash ${wd_sh} --stop"
+    log "Watchdog started; log: ${wd_log}"
+    log "  Stop: DEPLOY_ID=${DEPLOY_ID} bash ${wd_sh} --stop"
     return 0
 }
 
@@ -130,7 +130,7 @@ vllm_watchdog_stop() {
     local wpid
     wpid="$(cat "${pid_file}" 2>/dev/null)"
     if [ -n "${wpid}" ] && kill -0 "${wpid}" 2>/dev/null; then
-        log "停止看门狗 pid=${wpid}"
+        log "Stopping watchdog pid=${wpid}"
         kill -TERM "${wpid}" 2>/dev/null || true
         local w
         for w in $(seq 1 15); do
@@ -148,7 +148,7 @@ _stop_pid_file() {
     while read -r pid; do
         [ -n "${pid}" ] || continue
         if kill -0 "${pid}" 2>/dev/null; then
-            log "停止 pid=${pid}"
+            log "Stopping pid=${pid}"
             kill -TERM "${pid}" 2>/dev/null || true
             for _ in $(seq 1 30); do
                 kill -0 "${pid}" 2>/dev/null || break
@@ -163,13 +163,13 @@ _stop_pid_file() {
 vllm_stop() {
     vllm_watchdog_stop
     if [ ! -f "${PID_FILE}" ]; then
-        log "没有记录在案的实例 (${PID_FILE})"
-        log "提示：命令行停止请用 --stop --all，或 DEPLOY_ID=<id> --stop 指定具体实例"
+        log "No recorded instances (${PID_FILE})"
+        log "Use --stop --all, or DEPLOY_ID=<id> --stop for a specific deployment"
         return 0
     fi
     _stop_pid_file "${PID_FILE}"
     rm -f "${STATE_FILE}"
-    log "本次部署的实例已停止"
+    log "Deployment instances stopped"
 }
 
 vllm_stop_all() {
@@ -181,12 +181,12 @@ vllm_stop_all() {
     for f in "${VLLM_LOG_DIR}"/vllm_pids_*.txt; do
         [ -e "${f}" ] || continue
         found=1
-        log "清理 ${f}"
+        log "Removing ${f}"
         _stop_pid_file "${f}"
         did="$(basename "${f}")"; did="${did#vllm_pids_}"; did="${did%.txt}"
         rm -f "${VLLM_LOG_DIR}/vllm_state_${did}.tsv"
     done
-    [ "${found}" -eq 0 ] && log "没有找到任何 PID 记录"
+    [ "${found}" -eq 0 ] && log "No PID records found"
     return 0
 }
 
@@ -216,7 +216,7 @@ build_cmd() {
 vllm_deploy() {
     local preset="${MODEL_PRESETS[${MODEL_KEY}]:-}"
     if [ -z "${preset}" ]; then
-        log "ERROR: 未知模型预设 '${MODEL_KEY}'，可用："
+        log "ERROR: Unknown model preset '${MODEL_KEY}'; available presets:"
         printf '  %s\n' "${!MODEL_PRESETS[@]}" | sort >&2
         return 1
     fi
@@ -236,7 +236,7 @@ vllm_deploy() {
     local model_dir="${MODELS_ROOT}/${dir_name}"
     if [ "${MODEL_PATH_EXPLICIT:-}" = "1" ]; then model_dir="${MODEL_PATH:-${model_dir}}"; fi
     if [ ! -d "${model_dir}" ]; then
-        log "ERROR: 模型目录不存在: ${model_dir}"
+        log "ERROR: Model directory not found: ${model_dir}"
         return 1
     fi
 
@@ -259,19 +259,19 @@ vllm_deploy() {
     if [[ "${dry_run}" -eq 0 ]]; then total_gpus="$("${PYTHON}" -c 'import torch;print(torch.cuda.device_count())' 2>/dev/null || echo 0)"; fi
     need=$((tp * replicas))
     if [ "${total_gpus}" -gt 0 ] && [ "${need}" -gt "${total_gpus}" ]; then
-        log "ERROR: 需要 ${need} 张卡 (TP=${tp} x ${replicas} 实例)，但只有 ${total_gpus} 张"
+        log "ERROR: Requested ${need} GPUs (TP=${tp} x ${replicas} instances), but only ${total_gpus} are available"
         return 1
     fi
 
-    log "模型      : ${MODEL_KEY}  ->  ${model_dir}"
-    log "服务名    : ${served_name}"
-    log "拓扑      : TP=${tp} x ${replicas} 实例 (共 ${need} 卡)，显存占比 ${gpu_util}"
+    log "Model     : ${MODEL_KEY}  ->  ${model_dir}"
+    log "Served ID : ${served_name}"
+    log "Topology  : TP=${tp} x ${replicas} instances (${need} GPUs), memory utilization ${gpu_util}"
     if [ "${VLLM_PORT_MODE}" = "increment" ] && [ "${replicas}" -gt 1 ]; then
-        log "端口      : ${BASE_PORT} ~ $((BASE_PORT + replicas - 1)) (increment)"
+        log "Ports     : ${BASE_PORT} ~ $((BASE_PORT + replicas - 1)) (increment)"
     else
-        log "端口      : ${BASE_PORT}$([ "${replicas}" -gt 1 ] && echo " (${replicas} 个实例共用)")"
+        log "Ports     : ${BASE_PORT}$([ "${replicas}" -gt 1 ] && echo " (${replicas} instances sharing this port)")"
     fi
-    [ -n "${extra}" ] && log "额外参数  : ${extra}"
+    [ -n "${extra}" ] && log "Extra args: ${extra}"
 
     if [[ "${dry_run}" -eq 0 ]]; then
         : > "${PID_FILE}"
@@ -309,7 +309,7 @@ vllm_deploy() {
             continue
         fi
 
-        log ">>> 实例 $((i + 1))/${replicas}: GPU=${gpus} port=${port} 日志=${log_file}"
+        log ">>> Instance $((i + 1))/${replicas}: GPU=${gpus} port=${port} log=${log_file}"
         local _launch_ld
         _launch_ld="$(conda_nvidia_ld_prefix "${CONDA_ENV_PREFIX:-}" 2>/dev/null || true)"
         _launch_ld="${_launch_ld}${CONDA_ENV_PREFIX:+${CONDA_ENV_PREFIX}/lib:}${LD_LIBRARY_PATH:-}"
@@ -346,13 +346,13 @@ vllm_deploy() {
     uniq_ports="$(printf '%s\n' "${DEPLOYED_PORTS[@]}" | awk '!seen[$0]++' | paste -sd, -)"
     export VLLM_PORTS="${uniq_ports}"
     export VLLM_SERVED_MODEL_NAME="${served_name}"
-    log "实例已拉起，端口列表: ${VLLM_PORTS}"
+    log "Instances started; ports: ${VLLM_PORTS}"
     return 0
 }
 
 vllm_restart_instance() {
     local idx="$1"
-    [ -f "${STATE_FILE}" ] || { log "ERROR: 状态表不存在: ${STATE_FILE}"; return 1; }
+    [ -f "${STATE_FILE}" ] || { log "ERROR: State file not found: ${STATE_FILE}"; return 1; }
 
     local model_dir served_name tp gpu_util extra
     model_dir="$(awk -F'\t' '$1=="#"{print $2;exit}' "${STATE_FILE}")"
@@ -360,18 +360,18 @@ vllm_restart_instance() {
     tp="$(awk -F'\t' '$1=="#"{print $4;exit}' "${STATE_FILE}")"
     gpu_util="$(awk -F'\t' '$1=="#"{print $5;exit}' "${STATE_FILE}")"
     extra="$(awk -F'\t' '$1=="#"{print $6;exit}' "${STATE_FILE}")"
-    [ -n "${model_dir}" ] || { log "ERROR: 状态表缺少头部记录"; return 1; }
+    [ -n "${model_dir}" ] || { log "ERROR: State file is missing its header"; return 1; }
 
     local line old_pid gpus port log_file
     line="$(awk -F'\t' -v i="${idx}" '$1==i{print;exit}' "${STATE_FILE}")"
-    [ -n "${line}" ] || { log "ERROR: 状态表无实例 ${idx}"; return 1; }
+    [ -n "${line}" ] || { log "ERROR: No state record for instance ${idx}"; return 1; }
     old_pid="$(awk -F'\t' -v i="${idx}" '$1==i{print $2;exit}' "${STATE_FILE}")"
     gpus="$(awk -F'\t' -v i="${idx}" '$1==i{print $3;exit}' "${STATE_FILE}")"
     port="$(awk -F'\t' -v i="${idx}" '$1==i{print $4;exit}' "${STATE_FILE}")"
     log_file="$(awk -F'\t' -v i="${idx}" '$1==i{print $5;exit}' "${STATE_FILE}")"
 
     if [ -n "${old_pid}" ] && kill -0 "${old_pid}" 2>/dev/null; then
-        log "实例 ${idx} 旧进程 pid=${old_pid} 仍在，先终止"
+        log "Terminating previous process pid=${old_pid} for instance ${idx}"
         kill -TERM "${old_pid}" 2>/dev/null || true
         local w
         for w in $(seq 1 30); do
@@ -385,7 +385,7 @@ vllm_restart_instance() {
     resolve_vllm_cmd || return 1
     build_cmd "${model_dir}" "${served_name}" "${tp}" "${gpu_util}" "${port}" "${extra}"
 
-    log "重启实例 ${idx}: GPU=${gpus} port=${port} 日志=${log_file}"
+    log "Restarting instance ${idx}: GPU=${gpus} port=${port} log=${log_file}"
     local _restart_ld
     _restart_ld="$(conda_nvidia_ld_prefix "${CONDA_ENV_PREFIX:-}" 2>/dev/null || true)"
     _restart_ld="${_restart_ld}${CONDA_ENV_PREFIX:+${CONDA_ENV_PREFIX}/lib:}${LD_LIBRARY_PATH:-}"
@@ -421,7 +421,7 @@ vllm_restart_instance() {
         fi
     fi
     local new_pid=$!
-    log "实例 ${idx} 新 pid=${new_pid}"
+    log "Instance ${idx} new pid=${new_pid}"
 
     local tmp="${STATE_FILE}.tmp.$$"
     awk -F'\t' -v OFS='\t' -v i="${idx}" -v p="${new_pid}" \
@@ -444,21 +444,21 @@ vllm_wait_ready() {
             curl -sf -m 5 "http://localhost:${port}/v1/models" >/dev/null 2>&1 || ready_all=0
         done
         if [ "${ready_all}" -eq 1 ]; then
-            log "全部实例就绪 (耗时约 ${SECONDS}s，端口 ${VLLM_PORTS})"
+            log "All instances ready (elapsed approximately ${SECONDS}s; ports ${VLLM_PORTS})"
             return 0
         fi
         local pid
         for pid in "${pid_list[@]}"; do
             [ -n "${pid}" ] || continue
             if ! kill -0 "${pid}" 2>/dev/null; then
-                log "ERROR: 实例 pid=${pid} 已退出，日志尾部："
+                log "ERROR: Instance pid=${pid} exited; log tail:"
                 tail -n 40 "${DEPLOYED_LOGS[@]}" >&2 || true
                 return 1
             fi
         done
         sleep 5
     done
-    log "ERROR: 等待就绪超时 (${READY_TIMEOUT}s)"
+    log "ERROR: Readiness timeout (${READY_TIMEOUT}s)"
     tail -n 40 "${DEPLOYED_LOGS[@]}" >&2 || true
     return 1
 }

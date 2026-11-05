@@ -90,7 +90,7 @@ def measure_answer_time(function):
                 # Missing metadata, disk-full or logging errors cannot turn a
                 # successful inference into a failure or mask its real exception.
                 try:
-                    print(f'[warn] answer_timings.jsonl 写入失败: {type(exc).__name__}: {exc}')
+                    print(f'[warn] answer_timings.jsonl write failed: {type(exc).__name__}: {exc}')
                 except Exception:
                     # Closed stdout / a broken log pipe must not mask the
                     # inference return value or the original exception either.

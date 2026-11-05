@@ -33,13 +33,13 @@ while [[ $# -gt 0 ]]; do
         --stop)     do_stop=1; shift ;;
         --interval) INTERVAL="$2"; shift 2 ;;
         -h|--help)  sed -n '2,11p' "$0" | sed 's/^# \?//'; exit 0 ;;
-        *) echo "未知参数: $1" >&2; exit 1 ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
 
 DEPLOY_ID="${DEPLOY_ID:-}"
 if [ -z "${DEPLOY_ID}" ]; then
-    echo "[watchdog] ERROR: 需要设置 DEPLOY_ID（与 deploy_vllm.sh 一致）" >&2
+    echo "[watchdog] ERROR: Set DEPLOY_ID to the value used by deploy_vllm.sh" >&2
     exit 1
 fi
 
@@ -53,20 +53,20 @@ if [ "${do_stop}" -eq 1 ]; then
         wpid="$(cat "${WATCHDOG_PID_FILE}" 2>/dev/null)"
         if [ -n "${wpid}" ] && kill -0 "${wpid}" 2>/dev/null; then
             kill -TERM "${wpid}" 2>/dev/null || true
-            log "已停止看门狗 pid=${wpid}"
+            log "Stopped watchdog pid=${wpid}"
         else
-            log "看门狗进程不存在 (pid=${wpid:-<空>})"
+            log "Watchdog process not found (pid=${wpid:-<empty>})"
         fi
         rm -f "${WATCHDOG_PID_FILE}"
     else
-        log "没有记录在案的看门狗 (${WATCHDOG_PID_FILE})"
+        log "No recorded watchdog (${WATCHDOG_PID_FILE})"
     fi
     exit 0
 fi
 
 if [ ! -f "${STATE_FILE}" ]; then
-    echo "[watchdog] ERROR: 状态表不存在: ${STATE_FILE}" >&2
-    echo "[watchdog]   请确认 deploy_vllm.sh 已成功拉起实例，且 DEPLOY_ID 一致" >&2
+    echo "[watchdog] ERROR: State file not found: ${STATE_FILE}" >&2
+    echo "[watchdog]   Ensure deploy_vllm.sh started successfully and DEPLOY_ID matches" >&2
     exit 1
 fi
 
@@ -80,13 +80,13 @@ source "${PROJECT_ROOT}/deploy_vllm.sh"
 echo "${$}" > "${WATCHDOG_PID_FILE}"
 
 running=1
-on_term() { log "收到停止信号，看门狗退出"; running=0; }
+on_term() { log "Stop signal received; shutting down watchdog"; running=0; }
 trap on_term INT TERM
 trap 'rm -f "${WATCHDOG_PID_FILE}"' EXIT
 
 mapfile -t inst_idx < <(awk -F'\t' '$1!="#"{print $1}' "${STATE_FILE}")
 if [ "${#inst_idx[@]}" -eq 0 ]; then
-    echo "[watchdog] ERROR: 状态表里没有实例记录" >&2
+    echo "[watchdog] ERROR: No instance records in state file" >&2
     exit 1
 fi
 
@@ -102,14 +102,14 @@ if [ -z "${INFER_MODEL}" ]; then
     INFER_MODEL="$(awk -F'\t' '$1=="#"{print $3;exit}' "${STATE_FILE}")"
 fi
 
-log "启动: DEPLOY_ID=${DEPLOY_ID}  实例数=${#inst_idx[@]}"
-log "  检查间隔=${INTERVAL}s  超时=${TIMEOUT}s  失败阈值=${FAIL_THRESHOLD}  最多重启=${MAX_RESTARTS}/${RESTART_WINDOW}s"
+log "Starting: DEPLOY_ID=${DEPLOY_ID}  instances=${#inst_idx[@]}"
+log "  check_interval=${INTERVAL}s  timeout=${TIMEOUT}s  failure_threshold=${FAIL_THRESHOLD}  restart_limit=${MAX_RESTARTS}/${RESTART_WINDOW}s"
 if [ "${INFER_PROBE}" = "1" ]; then
-    log "  推理探测=开  每 ${INFER_EVERY} 轮一次  超时=${INFER_TIMEOUT}s  模型=${INFER_MODEL:-<未知>}"
+    log "  inference_probe=enabled  every ${INFER_EVERY} rounds  timeout=${INFER_TIMEOUT}s  model=${INFER_MODEL:-<unknown>}"
 else
-    log "  推理探测=关（仅进程+端口检查）"
+    log "  inference_probe=disabled (process and HTTP checks only)"
 fi
-log "  状态表=${STATE_FILE}"
+log "  state_file=${STATE_FILE}"
 
 probe_inference() {
     local port="$1" body resp
@@ -140,7 +140,7 @@ check_instance() {
 
     if [ "${probe}" = "1" ] && [ "${INFER_PROBE}" = "1" ]; then
         if ! probe_inference "${port}"; then
-            log "实例 ${idx} 端口应答正常，但推理探测失败（引擎可能卡死）"
+            log "Instance ${idx}: HTTP check passed but inference probe failed (engine may be stalled)"
             return 2
         fi
     fi
@@ -151,19 +151,19 @@ wait_instance_ready() {
     local idx="$1" deadline=$((SECONDS + READY_TIMEOUT))
     while [ "${SECONDS}" -lt "${deadline}" ]; do
         if check_instance "${idx}" 1; then
-            log "实例 ${idx} 已就绪（推理探测通过）"
+            log "Instance ${idx} ready (inference probe passed)"
             return 0
         fi
         local line pid
         line="$(awk -F'\t' -v i="${idx}" '$1==i{print;exit}' "${STATE_FILE}")"
         IFS=$'\t' read -r _ pid _ _ _ <<< "${line}"
         if [ -n "${pid}" ] && ! kill -0 "${pid}" 2>/dev/null; then
-            log "ERROR: 实例 ${idx} 重启后进程 pid=${pid} 已退出"
+            log "ERROR: Instance ${idx}: process pid=${pid} exited after restart"
             return 1
         fi
         sleep 10
     done
-    log "ERROR: 实例 ${idx} 重启后等待就绪超时 (${READY_TIMEOUT}s)"
+    log "ERROR: Instance ${idx}: readiness timeout after restart (${READY_TIMEOUT}s)"
     return 1
 }
 
@@ -184,7 +184,7 @@ while [ "${running}" -eq 1 ]; do
 
         if [ "${rc}" -eq 0 ]; then
             if [ "${fail_count[$idx]}" -gt 0 ] || [ "${infer_fail_count[$idx]}" -gt 0 ]; then
-                log "实例 ${idx} 恢复正常（此前端口失败 ${fail_count[$idx]} 次，推理失败 ${infer_fail_count[$idx]} 次）"
+                log "Instance ${idx} recovered (previous HTTP failures: ${fail_count[$idx]}; inference failures: ${infer_fail_count[$idx]})"
             fi
             fail_count["$idx"]=0
             [ "${do_probe}" = "1" ] && infer_fail_count["$idx"]=0
@@ -193,11 +193,11 @@ while [ "${running}" -eq 1 ]; do
 
         if [ "${rc}" -eq 2 ]; then
             infer_fail_count["$idx"]=$(( infer_fail_count["$idx"] + 1 ))
-            log "实例 ${idx} 推理探测失败 (${infer_fail_count[$idx]}/${FAIL_THRESHOLD})"
+            log "Instance ${idx}: inference probe failed (${infer_fail_count[$idx]}/${FAIL_THRESHOLD})"
             [ "${infer_fail_count[$idx]}" -ge "${FAIL_THRESHOLD}" ] || continue
         else
             fail_count["$idx"]=$(( fail_count["$idx"] + 1 ))
-            log "实例 ${idx} 健康检查失败 (${fail_count[$idx]}/${FAIL_THRESHOLD})"
+            log "Instance ${idx}: health check failed (${fail_count[$idx]}/${FAIL_THRESHOLD})"
             [ "${fail_count[$idx]}" -ge "${FAIL_THRESHOLD}" ] || continue
         fi
 
@@ -208,24 +208,24 @@ while [ "${running}" -eq 1 ]; do
         fi
 
         if [ "${restart_count[$idx]}" -ge "${MAX_RESTARTS}" ]; then
-            log "ERROR: 实例 ${idx} 在 ${RESTART_WINDOW}s 内已重启 ${restart_count[$idx]} 次，放弃自动恢复"
-            log "  请人工排查日志后重新部署；看门狗继续监控其它实例"
+            log "ERROR: Instance ${idx}: restart limit reached (${restart_count[$idx]} restarts in ${RESTART_WINDOW}s); automatic recovery disabled"
+            log "  Inspect logs and redeploy manually; continuing to monitor other instances"
             fail_count["$idx"]=0
             infer_fail_count["$idx"]=0
             continue
         fi
 
         restart_count["$idx"]=$(( restart_count["$idx"] + 1 ))
-        log "判定实例 ${idx} 已挂，执行第 ${restart_count[$idx]} 次重启"
+        log "Instance ${idx} unhealthy; starting restart ${restart_count[$idx]}"
 
         if vllm_restart_instance "${idx}"; then
             if wait_instance_ready "${idx}"; then
-                log "实例 ${idx} 重启成功"
+                log "Instance ${idx} restarted successfully"
             else
-                log "WARN: 实例 ${idx} 重启后未能就绪，下轮继续观察"
+                log "WARN: Instance ${idx} not ready after restart; checking again next round"
             fi
         else
-            log "ERROR: 实例 ${idx} 重启命令执行失败"
+            log "ERROR: Instance ${idx}: restart command failed"
         fi
         fail_count["$idx"]=0
         infer_fail_count["$idx"]=0
@@ -235,5 +235,5 @@ while [ "${running}" -eq 1 ]; do
     sleep "${INTERVAL}"
 done
 
-log "看门狗已退出"
+log "Watchdog exited"
 exit 0
