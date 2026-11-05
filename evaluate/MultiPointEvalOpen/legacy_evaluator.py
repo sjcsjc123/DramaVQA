@@ -234,7 +234,7 @@ def load_clip_images(image_root, drama, l3_time):
             img.load()
             imgs.append((img, fname))
         except Exception as e:
-            print('[WARN] 读取图片失败，跳过: {}/{}: {}'.format(clip_dir, fname, e))
+            print('[WARN] Failed to read image; skipping: {}/{}: {}'.format(clip_dir, fname, e))
     if not imgs:
         return None, 'images_load_failed'
     return imgs, None
@@ -328,11 +328,11 @@ def load_keys(api_key, keys_file):
                 if line and not line.startswith('#'):
                     keys.append(line)
         if not keys:
-            raise ValueError('--keys-file {} 中没有有效 key'.format(keys_file))
+            raise ValueError('--keys-file {} contains no valid API keys'.format(keys_file))
         return keys
     if api_key:
         return [api_key]
-    raise ValueError('必须提供 --api-key 或 --keys-file')
+    raise ValueError('Provide --api-key or --keys-file')
 
 
 class MultiPointEvaluator:
@@ -364,7 +364,7 @@ class MultiPointEvaluator:
 
         self.budget = TokenBudget(tpm_limit)
         self._raw_log_lock = threading.Lock()
-        print('  API key 数量: {}'.format(len(self._keys)))
+        print('  API key count: {}'.format(len(self._keys)))
 
     def _get_client(self):
         'Each call rotates to the next key, returning a new OpenAI client.'
@@ -523,13 +523,13 @@ class MultiPointEvaluator:
 
             except _openai.RateLimitError as e:
                 wait = min(15 * (2 ** attempt), 240) + random.uniform(0, 5)
-                print('[{}] RateLimitError，等待 {:.0f}s: {}'.format(
+                print('[{}] RateLimitError; waiting {:.0f}s: {}'.format(
                     qa_key, wait, str(e)[:120]))
                 time.sleep(wait)
 
             except _openai.APITimeoutError as e:
                 wait = min(30 * (2 ** attempt), 120) + random.uniform(0, 5)
-                print('[{}] Timeout，等待 {:.0f}s'.format(qa_key, wait))
+                print('[{}] Timeout; waiting {:.0f}s'.format(qa_key, wait))
                 time.sleep(wait)
 
             except _openai.OpenAIError as e:
@@ -543,7 +543,7 @@ class MultiPointEvaluator:
                 time.sleep(wait)
 
             except Exception as e:
-                err_msg = '未预期异常 {}: {}'.format(type(e).__name__, str(e)[:240])
+                err_msg = 'Unexpected exception {}: {}'.format(type(e).__name__, str(e)[:240])
                 print('[{}] {}'.format(qa_key, err_msg))
                 if attempt == self.max_retries - 1:
                     return None, 0, 'api_unexpected_error|' + err_msg
@@ -584,13 +584,13 @@ class MultiPointEvaluator:
         for t in l3_times:
             imgs, reason = load_clip_images(image_root, drama, t)
             if imgs is None:
-                print('[WARN] {} L3_time={} 图片缺失({}), 跳过此题'.format(
+                print('[WARN] {} L3_time={} missing images ({}); skipping question'.format(
                     key, t, reason))
                 return dict(qa_type=qa_type, qa_id=qa_id, key=key,
                             question=question, options=options, answer=answer,
                             pred=None, result=None, correct=False,
                             total_tokens=0, raw_response=None,
-                            skip_reason=reason, error_msg='图片缺失 L3_time={} reason={}'.format(t, reason),
+                            skip_reason=reason, error_msg='Missing images L3_time={} reason={}'.format(t, reason),
                             guessed=False,
                             ts=datetime.datetime.now().isoformat(), **provenance)
             subs = load_subtitles(image_root, drama, t)
@@ -649,10 +649,10 @@ class MultiPointEvaluator:
             if letters:
                 pred = random.choice(letters)
                 guessed = True
-                print('[{}] 提取失败，随机兜底 -> {} (候选 {})'.format(
+                print('[{}] Answer extraction failed; random fallback -> {} (candidates {})'.format(
                     key, pred, ''.join(letters)))
             else:
-                print('[{}] 提取失败且无法解析选项，记为 None'.format(key))
+                print('[{}] Answer extraction failed and options could not be parsed; recording None'.format(key))
 
         correct = (pred == answer) if pred is not None else False
         return dict(qa_type=qa_type, qa_id=qa_id,
@@ -687,7 +687,7 @@ class MultiPointEvaluator:
                     k = (obj.get('qa_type', ''), str(obj.get('qa_id', '')))
                     last[k] = obj
         except Exception as e:
-            print('[WARN] 读取进度文件失败，从头开始: {}'.format(e))
+            print('[WARN] Failed to read progress file; starting over: {}'.format(e))
             return set()
         if self.input_fingerprints is not None:
             from pool_inputs import Blocked
@@ -714,7 +714,7 @@ class MultiPointEvaluator:
         results_path = os.path.join(self.output_dir, 'results.json')
 
         done_set = self._load_done_set(raw_log_path)
-        print('[{}] 已完成 {} 题'.format(drama, len(done_set)))
+        print('[{}] Completed {} questions'.format(drama, len(done_set)))
 
         # Collect tasks to run (in order: B_order -> B_sort -> D_same -> multi_hop)
         tasks = []
@@ -725,9 +725,9 @@ class MultiPointEvaluator:
 
         if self.limit > 0:
             tasks = tasks[:self.limit]
-            print('[{}] --limit {}，只跑前 {} 题'.format(drama, self.limit, len(tasks)))
+            print('[{}] --limit {}; evaluating the first {} questions'.format(drama, self.limit, len(tasks)))
 
-        print('[{}] 待跑 {} 题，并发 {}'.format(drama, len(tasks), self.num_workers))
+        print('[{}] {} questions pending; concurrency {}'.format(drama, len(tasks), self.num_workers))
 
         if tasks:
             with ThreadPoolExecutor(max_workers=self.num_workers) as pool:
@@ -753,7 +753,7 @@ class MultiPointEvaluator:
                     except Exception as e:
                         print('[ERROR] {}:{}: {}'.format(qt, qid, e))
         else:
-            print('[{}] 所有题目已完成'.format(drama))
+            print('[{}] All questions completed'.format(drama))
 
         self._save_summary(qa_data, drama, raw_log_path, results_path)
 
@@ -779,7 +779,7 @@ class MultiPointEvaluator:
                         except json.JSONDecodeError:
                             pass
             except Exception as e:
-                print('[WARN] 汇总读取失败: {}'.format(e))
+                print('[WARN] Failed to read summary: {}'.format(e))
 
         stats = {}
         total = correct = skipped = guessed = guessed_hit = 0
@@ -821,18 +821,18 @@ class MultiPointEvaluator:
         )
         atomic_dump_json(summary, results_path)
 
-        print('\n========== {} 评测汇总 =========='.format(drama))
-        print('模型: {}'.format(self.model))
-        print('总题数: {}  正确: {}  准确率: {:.2f}%  跳过(未计入): {}'.format(
+        print('\n========== {} Evaluation summary =========='.format(drama))
+        print('Model: {}'.format(self.model))
+        print('Total: {}  Correct: {}  Accuracy: {:.2f}%  Skipped (excluded): {}'.format(
             total, correct, summary['acc'], skipped))
         if guessed:
             real_acc = (correct - guessed_hit) / total * 100 if total else 0.0
-            print('随机兜底: {} 题，猜中 {}；剔除猜中后准确率: {:.2f}%'.format(
+            print('Random fallback: {} questions, {} correct guesses; accuracy excluding correct guesses: {:.2f}%'.format(
                 guessed, guessed_hit, real_acc))
         for qt, s in stats.items():
             print('  {}: {}/{} = {:.2f}%'.format(
                 qt, s['correct'], s['total'], s['acc']))
-        print('结果已写入: {}'.format(results_path))
+        print('Results saved to: {}'.format(results_path))
 
 
 # ---------------------------------------------------------------------------
@@ -841,7 +841,7 @@ class MultiPointEvaluator:
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description='Multi-Point QA 评测（所有参数通过命令行传入，无环境变量依赖）'
+        description='Multi-Point QA evaluation (all settings supplied through CLI arguments)'
     )
     p.add_argument('--base-url',    required=True,
                    help='OpenAI-compatible API base URL.')
@@ -882,14 +882,14 @@ def main():
     drama = args.drama or Path(args.qa_file).stem
 
     print('=' * 48)
-    print('Multi-Point QA 评测')
-    print('  模型      : {}'.format(args.model))
-    print('  API 地址  : {}'.format(args.base_url))
-    print('  QA 文件   : {}'.format(args.qa_file))
-    print('  图片根目录: {}'.format(args.image_root))
-    print('  结果目录  : {}'.format(args.output_dir))
-    print('  剧目      : {}'.format(drama))
-    print('  并发      : {}  TPM限速: {}'.format(args.num_workers, args.tpm_limit))
+    print('Multi-Point QA evaluation')
+    print('  Model     : {}'.format(args.model))
+    print('  API URL   : {}'.format(args.base_url))
+    print('  QA file   : {}'.format(args.qa_file))
+    print('  Image root: {}'.format(args.image_root))
+    print('  Output dir: {}'.format(args.output_dir))
+    print('  Drama     : {}'.format(drama))
+    print('  Workers   : {}  TPM limit: {}'.format(args.num_workers, args.tpm_limit))
     print('=' * 48)
 
     ev = MultiPointEvaluator(

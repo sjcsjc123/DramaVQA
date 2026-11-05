@@ -105,7 +105,7 @@ except ImportError:
             return None
     def cpu(index=0):
         return None
-    print('[info] decord 不可用，使用 ffmpeg 兜底解码')
+    print('[info] decord unavailable; falling back to ffmpeg decoding')
 
 # decord defaults to using CPU threads for decoding. With 176 CPU cores on the machine
 # and 10+ concurrent processes during image generation, the thread count expands to
@@ -844,11 +844,11 @@ class LLMInference:
                 if (self.model_name and env_model_id != self.model_name
                         and os.environ.get('ALLOW_MODEL_ID_MISMATCH') != '1'):
                     raise SystemExit(
-                        f"ERROR: --model_name ({self.model_name}) 与 "
-                        f"API_MODEL_ID ({env_model_id}) 不一致。\n"
-                        f"  结果会写进 {self.model_name} 的目录，实际却请求 "
-                        f"{env_model_id}，属于静默污染。\n"
-                        f"  确认无误可设 ALLOW_MODEL_ID_MISMATCH=1 跳过此检查。"
+                        f"ERROR: --model_name ({self.model_name}) does not match "
+                        f"API_MODEL_ID ({env_model_id}).\n"
+                        f"  Results would be saved under {self.model_name} while requests use "
+                        f"{env_model_id}; this would misattribute results.\n"
+                        f"  Set ALLOW_MODEL_ID_MISMATCH=1 to bypass this check if intentional."
                     )
                 self.model_name = env_model_id
         # elif 'gemini' in self.short_model_name:
@@ -881,7 +881,7 @@ class LLMInference:
                         # Skip the task if the episode is incomplete or the directory
                         # name does not match. Do not let a single missing episode
                         # prevent the entire evaluation round from starting.
-                        print(f"[WARN] 人脸视频目录不存在，跳过: {face_video_root}")
+                        print(f"[WARN] Face video directory not found; skipping: {face_video_root}")
                         self.skipped_videos.append({'path': face_video_root, 'reason': 'dir_not_found'})
                         continue
                     video_list = os.listdir(video_dir)
@@ -889,12 +889,12 @@ class LLMInference:
                 else:
                     video_data = os.path.join(video_path, 'video_data')
                     if not os.path.exists(video_data):
-                        print(f"[WARN] video_data 目录不存在，跳过: {video_data}")
+                        print(f"[WARN] video_data directory not found; skipping: {video_data}")
                         self.skipped_videos.append({'path': video_data, 'reason': 'dir_not_found'})
                         continue
                     video_dir = self._resolve_versioned_dir(video_data, 'video_step')
                     if video_dir is None:
-                        print(f"[WARN] video_data 下无子目录，跳过: {video_data}")
+                        print(f"[WARN] No subdirectories under video_data; skipping: {video_data}")
                         self.skipped_videos.append({'path': video_data, 'reason': 'no_subdir'})
                         continue
                     video_list = os.listdir(video_dir)
@@ -913,7 +913,7 @@ class LLMInference:
                             fps = vr.get_avg_fps()
                             total_frames = len(vr)
                         except Exception as e:
-                            print(f"[WARN] 视频打不开，跳过: {video_i_path}  {type(e).__name__}: {str(e)[:120]}")
+                            print(f"[WARN] Cannot open video; skipping: {video_i_path}  {type(e).__name__}: {str(e)[:120]}")
                             self.skipped_videos.append({
                                 'path': video_i_path,
                                 'reason': f'{type(e).__name__}: {str(e)[:200]}',
@@ -931,7 +931,7 @@ class LLMInference:
                         gc.collect()
 
             if self.skipped_videos:
-                print(f"[WARN] 共跳过 {len(self.skipped_videos)} 个视频/目录（缺失或损坏）")
+                print(f"[WARN] Skipped {len(self.skipped_videos)} missing or damaged videos/directories")
 
             if len(self.episode_info) == 0:
                 # If no usable video is available for this episode (no transmission or
@@ -939,7 +939,7 @@ class LLMInference:
                 # catches and exits with code 0 to prevent the start.sh episode loop
                 # from halting entirely.
                 raise NoVideoAvailable(
-                    f"剧目 {self.drama} 无可用视频，已跳过。检查过的路径: "
+                    f"No usable videos for drama {self.drama}; skipped. Checked paths: "
                     f"{[v['path'] for v in self.skipped_videos][:5]}")
 
     def sample_list_equally(self, lst, n):
@@ -1068,7 +1068,7 @@ class LLMInference:
                 # prevents multiple workers from waking up simultaneously and flooding
                 # the quota at once.
                 wait = min(15 * (2 ** attempt), 240) + random.uniform(0, 5)
-                print(f'RATE_LIMIT (attempt {attempt + 1}/{retries}), 等待 {wait:.0f}s: {str(e)[:120]}')
+                print(f'RATE_LIMIT (attempt {attempt + 1}/{retries}), waiting {wait:.0f}s: {str(e)[:120]}')
                 time.sleep(wait)
             except openai.OpenAIError as e:
                 print(f'ERROR: {e}')
@@ -1079,7 +1079,7 @@ class LLMInference:
                 if not retryable or attempt == retries - 1:
                     return None
                 wait = min(10 * (2 ** attempt), 120) + random.uniform(0, 5)
-                print(f'  可重试错误，等待 {wait:.0f}s 后重试 ({attempt + 1}/{retries})')
+                print(f'  Retryable error; retrying after {wait:.0f}s ({attempt + 1}/{retries})')
                 time.sleep(wait)
 
         print(f"Failed after multiple retries.")
@@ -1124,8 +1124,8 @@ class LLMInference:
                     # results. Instead, leave the corrupted file for manual inspection.
                     # Returning an empty dictionary allows the run to restart from
                     # scratch, and the bad file will be properly overwritten on disk.
-                    print(f'WARNING: {dict_path} 解析失败({e})，'
-                          f'本格按全新任务重跑（原文件保留，未删除）')
+                    print(f'WARNING: {dict_path} could not be parsed ({e}); '
+                          f'rerunning this configuration from scratch (original file preserved)')
                     return {}, False
                 if not q_a_dict:
                     return {}, False
@@ -1175,8 +1175,8 @@ class LLMInference:
                          if v.get('Q&A', {}).get('Question') in in_set}
                         dropped = len(q_a_dict) - len(kept)
                         if dropped:
-                            print(f'[题库裁剪] 剔除 {dropped} 道当前题库外的题'
-                                  f'（保留 {len(kept)} 道），答案仍留在文件里')
+                            print(f'[question filter] Excluded {dropped} questions outside the current question set'
+                                  f' ({len(kept)} retained); existing answers remain in the file')
                         # Out-of-bank answers cannot be lost: the trimmed results will
                         # be saved to disk over the original file via atomic_dump_json.
                         # Put out-of-bank questions onto the instance, and re-merge them
@@ -1323,7 +1323,7 @@ class LLMInference:
             atomic_dump_json(meta, os.path.join(qa_path, 'run_meta.json'))
         except Exception as e:
             # The metadata writing should not interrupt evaluation
-            print(f'[warn] run_meta.json 写入失败: {e}')
+            print(f'[warn] run_meta.json write failed: {e}')
 
         # The original response and run_meta.json are in the same directory for easy
         # localization by experiment/scene/level
@@ -1366,7 +1366,7 @@ class LLMInference:
                 with open(self._raw_log_path, 'a', encoding='utf-8') as f:
                     f.write(json.dumps(record, ensure_ascii=False) + '\n')
         except Exception as e:
-            print(f'[warn] raw_responses.jsonl 写入失败: {e}')
+            print(f'[warn] raw_responses.jsonl write failed: {e}')
 
     def single_inference(self):
         qa_path = self._get_qa_path()
@@ -1399,7 +1399,7 @@ class LLMInference:
             # Consistent with parallel branches: missing image clips are skipped to
             # prevent evaluation interruption
             if not os.path.isdir(image_file_path):
-                print(f"[WARN] 图片目录不存在，跳过该题 {self.drama}/{self.level}/{key}: {image_file_path}")
+                print(f"[WARN] Image directory not found; skipping question {self.drama}/{self.level}/{key}: {image_file_path}")
                 q_a_dict[key]['Q&A']['result'] = None
                 q_a_dict[key]['Q&A']['total_tokens'] = 0
                 q_a_dict[key]['Q&A']['an4ques'] = q_info['Q&A']['Question']
@@ -1420,7 +1420,7 @@ class LLMInference:
                 frame_names.append(image_file)
 
             if not base64_frames:
-                print(f"[WARN] 图片目录为空，跳过该题 {self.drama}/{self.level}/{key}: {image_file_path}")
+                print(f"[WARN] Image directory empty; skipping question {self.drama}/{self.level}/{key}: {image_file_path}")
                 q_a_dict[key]['Q&A']['result'] = None
                 q_a_dict[key]['Q&A']['total_tokens'] = 0
                 q_a_dict[key]['Q&A']['an4ques'] = q_info['Q&A']['Question']
@@ -1706,7 +1706,7 @@ class LLMInference:
         # Skip video missing/damaged clips as no images are generated; mark reason to
         # avoid silent loss due to FileNotFoundError when using listdir
         if not os.path.isdir(image_file_path):
-            print(f"[WARN] 图片目录不存在，跳过该题 {self.drama}/{self.level}/{key}: {image_file_path}")
+            print(f"[WARN] Image directory not found; skipping question {self.drama}/{self.level}/{key}: {image_file_path}")
             return key, {'result': None, 'total_tokens': 0,
                          'an4ques': q_info['Q&A']['Question'],
                          'cot': None, 'skip_reason': 'images_not_found'}
@@ -1723,7 +1723,7 @@ class LLMInference:
             frame_names.append(image_file)
 
         if not base64_frames:
-            print(f"[WARN] 图片目录为空，跳过该题 {self.drama}/{self.level}/{key}: {image_file_path}")
+            print(f"[WARN] Image directory empty; skipping question {self.drama}/{self.level}/{key}: {image_file_path}")
             return key, {'result': None, 'total_tokens': 0,
                          'an4ques': q_info['Q&A']['Question'],
                          'cot': None, 'skip_reason': 'images_empty'}
@@ -1850,7 +1850,7 @@ class LLMInference:
             return None, {'guessed': False, 'guess_reason': 'no_options_parsed',
                           'extract_fail_count': fail_count}
         pick = random.choice(letters)
-        print(f"[{key or 'Unknown'}] 提取失败 {fail_count} 次，随机兜底选择 {pick} (候选 {''.join(letters)})")
+        print(f"[{key or 'Unknown'}] Answer extraction failed {fail_count} times; random fallback chose {pick} (candidates {''.join(letters)})")
         return pick, {'guessed': True, 'guess_reason': 'extract_failed',
                       'guess_from': ''.join(letters), 'skip_reason': None,
                       'extract_fail_count': fail_count}
@@ -1867,7 +1867,7 @@ class LLMInference:
             # AttributeError when accessing .choices.
             response = self.openai_inference(msg)
             if response is None:
-                print(f"[{key or 'Unknown'}] API 无响应（限流或服务端错误），记为未答")
+                print(f"[{key or 'Unknown'}] No API response (rate limit or server error); recording unanswered")
                 return None, 0, last_raw, 'api_no_response'
 
             message = response.choices[0].message
@@ -1900,7 +1900,7 @@ class LLMInference:
                 if reasoning:
                     result = reasoning
             if result is None:
-                print(f"[{key or 'Unknown'}] 响应 content 为空，记为未答")
+                print(f"[{key or 'Unknown'}] Response content is None; recording unanswered")
                 return None, total_tokens, last_raw, 'api_empty_content'
             stripped_result = result.strip()
             if not stripped_result:
@@ -1909,7 +1909,7 @@ class LLMInference:
                 # answered, falsely reporting "model never output" as a wrong answer.
                 # Using skip_reason allows is_item_done to be evaluated as not assessed,
                 # so it can be re-run next time.
-                print(f"[{key or 'Unknown'}] 响应内容为空串，记为未答")
+                print(f"[{key or 'Unknown'}] Response content is empty; recording unanswered")
                 return None, total_tokens, last_raw, 'api_empty_content'
             last_raw = stripped_result
             # finish_reason distinguishes between "model finishes its own work" and "cut
@@ -1928,8 +1928,8 @@ class LLMInference:
             if extracted is not None and qa is not None:
                 letters = parse_option_letters(qa.get('Options'))
                 if letters and extracted.strip().upper() not in letters:
-                    print(f"[{key or 'Unknown'}] 提取到非法选项 {extracted}，"
-                          f"合法为 {''.join(letters)}，视为提取失败")
+                    print(f"[{key or 'Unknown'}] Extracted invalid option {extracted}; "
+                          f"valid options: {''.join(letters)}; treating as extraction failure")
                     extracted = None
             match = extracted is not None
             self.dump_raw_response(key, attempt, stripped_result, extracted,
@@ -1941,10 +1941,10 @@ class LLMInference:
             # Extraction failed, preparing to retry (last attempt without waiting)
             if attempt < max_retries:
                 wait_time = delay_base * (2 ** (attempt - 1))  # Exponential backoff
-                print(f"[{key or 'Unknown'}] 第 {attempt} 次提取失败，响应: {repr(result)}，{wait_time:.2f}s 后重试...")
+                print(f"[{key or 'Unknown'}] Extraction attempt {attempt} failed; response: {repr(result)}; retrying in {wait_time:.2f}s...")
                 time.sleep(wait_time)
             else:
-                print(f"[{key or 'Unknown'}] 已达最大重试次数 ({max_retries})，仍无法提取有效格式。最终响应: {repr(result)}")
+                print(f"[{key or 'Unknown'}] Maximum retries ({max_retries}) reached without a valid answer. Final response: {repr(result)}")
 
         # Extraction failed: result is set to None (downstream uses this to determine
         # incorrect response), but the last original reply is stored in cot for
@@ -2027,7 +2027,7 @@ class LLMInference:
         # --limit: keep only the first N clips for quick smoke testing
         if self.limit and self.level in self.questions:
             kept = dict(list(self.questions[self.level].items())[:self.limit])
-            print(f'[limit] 只处理 {len(kept)}/{len(self.questions[self.level])} 个 clip')
+            print(f'[limit] Processing {len(kept)}/{len(self.questions[self.level])} clips')
             self.questions[self.level] = kept
 
         # --shard_index/--shard_total: split the clips of this episode into shards and
@@ -2041,7 +2041,7 @@ class LLMInference:
             kept = {k: v for i, (k, v) in enumerate(items)
                     if i % self.shard_total == self.shard_index}
             print(f'[shard {self.shard_index}/{self.shard_total}] '
-                  f'本片处理 {len(kept)}/{len(items)} 个 clip')
+                  f'Processing {len(kept)}/{len(items)} clips for this video')
             self.questions[self.level] = kept
 
         for q_level, q_info in self.questions.items():
@@ -2072,7 +2072,7 @@ class LLMInference:
                     try:
                         sample_res = self.sample_frames_from_video(time, sampled_img_path)
                     except Exception as e:
-                        print(f"[WARN] clip 抽帧失败，跳过 {self.drama}/{self.level}/{q_id} ({time}): "
+                        print(f"[WARN] Clip frame extraction failed; skipping {self.drama}/{self.level}/{q_id} ({time}): "
                               f"{type(e).__name__}: {str(e)[:160]}")
                         self.skipped_clips.append({
                             'drama': self.drama,
@@ -2088,8 +2088,8 @@ class LLMInference:
 
         # Aggregate skip cases: use missing frames to identify which clips lack video
         if self.skipped_videos or self.skipped_clips:
-            print(f"[SUMMARY] {self.drama}/{self.level}: 跳过视频 {len(self.skipped_videos)} 个, "
-                  f"跳过 clip {len(self.skipped_clips)} 个")
+            print(f"[SUMMARY] {self.drama}/{self.level}: Skipped videos: {len(self.skipped_videos)}, "
+                  f"skipped clips: {len(self.skipped_clips)}")
             try:
                 os.makedirs(self.image_path, exist_ok=True)
                 # When splitting and parallel processing, multiple processes write to
@@ -2106,9 +2106,9 @@ class LLMInference:
                     'skipped_videos': self.skipped_videos,
                     'skipped_clips': self.skipped_clips,
                 }, report, indent=2)
-                print(f"[SUMMARY] 跳过明细已写入 {report}")
+                print(f"[SUMMARY] Skip details saved to {report}")
             except Exception as e:
-                print(f"[warn] 跳过明细写入失败: {e}")
+                print(f"[warn] Failed to write skip details: {e}")
 
     def count_jpg_files(self, sampled_img_path):
         image_extensions = ('.jpg', '.jpeg', '.png')
@@ -2142,7 +2142,7 @@ class LLMInference:
         try:
             ok = cv2.imwrite(tmp_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 100])
             if not ok:
-                raise IOError('cv2.imwrite 返回 False: {}'.format(tmp_path))
+                raise IOError('cv2.imwrite returned False: {}'.format(tmp_path))
             os.replace(tmp_path, path)
         except Exception:
             try:
@@ -2220,7 +2220,7 @@ class LLMInference:
             return info['fps'], info['total_frames']
 
         if not os.path.exists(video_path):
-            print(f"[WARN] 视频不存在，跳过该集: {video_path}")
+            print(f"[WARN] Video not found; skipping episode: {video_path}")
             return None, None
         try:
             vr = VideoReader(video_path, ctx=cpu(0), num_threads=DECORD_NUM_THREADS)
@@ -2230,7 +2230,7 @@ class LLMInference:
             gc.collect()
             return fps, total_frames
         except Exception as e:
-            print(f"[WARN] 视频打不开，跳过该集: {video_path}  {type(e).__name__}: {str(e)[:120]}")
+            print(f"[WARN] Cannot open video; skipping episode: {video_path}  {type(e).__name__}: {str(e)[:120]}")
             return None, None
 
     def get_frame_range(self, sea_epi, video_path, start_time=None, end_time=None):
@@ -2358,7 +2358,7 @@ class LLMInference:
 
         if total_available == 0:
             raise ValueError(
-                f"区间内没有任何可用帧: {time} (drama={self.drama}, level={self.level})")
+                f"No usable frames in interval: {time} (drama={self.drama}, level={self.level})")
 
         # 5. Uniformly sample points on the virtual timeline after concatenation, then
         # map back to (episode, frame number). Equivalent to old linspace over full
@@ -3122,7 +3122,7 @@ class LLMInference:
                 total_tokens += reported_tokens
 
         if gts == 0:
-            print('model: {}, 无有效评测结果（跳过 {} 题）'.format(self.short_model_name, skipped))
+            print('model: {}, No valid evaluation results ({} questions skipped)'.format(self.short_model_name, skipped))
             return
 
         acc = (tps / gts) * 100
@@ -3131,15 +3131,15 @@ class LLMInference:
         print('model: {}, question num: {}, accuracy: {:.2f}, avg tokens per question {}'.format(
                                                                     self.short_model_name,
                                                                     gts, acc, tokens_per_q))
-        print('  其中未能提取答案: {} 题 ({:.2f}%)，因缺数据跳过未计入: {} 题'.format(
+        print('  Answer extraction failed: {} questions ({:.2f}%); excluded due to missing data: {} questions'.format(
             no_extract, no_extract / gts * 100, skipped))
         # Random fallback problems will "gain" some correct answers, which must be
         # reported separately; otherwise, the true performance cannot be judged.
         # real_acc is the lower bound after removing guessed correct answers.
         if guessed:
             real_acc = (tps - guessed_hit) / gts * 100
-            print('  随机兜底: {} 题 ({:.2f}%)，其中猜中 {} 题；'
-                  '剔除猜中后的准确率 {:.2f}%'.format(
+            print('  Random fallback: {} questions ({:.2f}%), including {} correct guesses; '
+                  'accuracy excluding correct guesses: {:.2f}%'.format(
                       guessed, guessed / gts * 100, guessed_hit, real_acc))
 
 def main(args):
