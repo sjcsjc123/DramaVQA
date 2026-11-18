@@ -343,7 +343,12 @@ class MultiPointEvaluator:
     def __init__(self, base_url, api_key, model, image_root, output_dir,
                  num_workers=2, tpm_limit=0, max_tokens=1000,
                  max_retries=6, api_timeout=120.0, limit=0,
-                 keys_file='', input_fingerprints=None, reasoning_effort=None):
+                 keys_file='', input_fingerprints=None, reasoning_effort=None,
+                 evaluation_profile='legacy', model_thinking='off', image_encoding='png'):
+        from .pool_config import load_profile
+        self.pool_profile = load_profile(evaluation_profile)
+        self.model_thinking = model_thinking
+        self.image_encoding = image_encoding
         self.model = model
         self.image_root = image_root
         self.input_fingerprints = input_fingerprints
@@ -410,6 +415,12 @@ class MultiPointEvaluator:
                 'text': SCENE_LABEL_TMPL.format(n=orig_idx + 1),
             })
             for pil_img, fname in imgs_with_names:
+                if self.pool_profile is not None:
+                    from .pool_config import image_part
+                    user_content.append(image_part(pil_img, self.pool_profile['alignment_factor'], self.image_encoding))
+                    if subs and (subs.get(fname) or '').strip():
+                        user_content.append({'type': 'text', 'text': subs[fname].strip()})
+                    continue
                 pil_img = align_pil(pil_img)
                 b64 = pil_to_b64(pil_img)
                 user_content.append({
@@ -441,6 +452,9 @@ class MultiPointEvaluator:
         is_vl = 'qwen' in self.model.lower() and '-vl-' in self.model.lower()
         if not is_vl:
             kwargs['extra_body'] = {'enable_thinking': False}
+        if self.pool_profile is not None:
+            from .pool_config import request_kwargs
+            kwargs = request_kwargs(self.pool_profile, self.model, messages, self.max_tokens, self.model_thinking)
         for attempt in range(self.max_retries):
             if self._routed_block.is_set():
                 return None, 0, 'provider_blocked'
@@ -449,7 +463,8 @@ class MultiPointEvaluator:
                     response = client.chat.completions.create(**kwargs)
                 message = response.choices[0].message
                 raw = (message.content or '').strip()
-                if not is_vl and (getattr(message, 'reasoning_content', '') or '').strip():
+                check_thinking = (self.model_thinking == 'off') if self.pool_profile is not None else not is_vl
+                if check_thinking and (getattr(message, 'reasoning_content', '') or '').strip():
                     self._routed_block.set()
                     return None, 0, 'thinking_not_disabled'
                 return raw, response.usage.total_tokens if response.usage else 0, response.choices[0].finish_reason
@@ -501,7 +516,10 @@ class MultiPointEvaluator:
                     temperature=0.1,
                     top_p=0.01,
                 )
-                if is_glm53:
+                if self.pool_profile is not None:
+                    from .pool_config import request_kwargs
+                    create_kwargs = request_kwargs(self.pool_profile, self.model, messages, self.max_tokens, self.model_thinking)
+                elif is_glm53:
                     # Native GLM-5.3 template always thinks; enable_thinking=off is invalid.
                     if self.reasoning_effort:
                         create_kwargs['reasoning_effort'] = self.reasoning_effort
@@ -509,7 +527,12 @@ class MultiPointEvaluator:
                     create_kwargs['extra_body'] = {'enable_thinking': False}
                 resp = self._get_client().chat.completions.create(**create_kwargs)
 
-                raw = (resp.choices[0].message.content or '').strip()
+                message = resp.choices[0].message
+                raw = (message.content or '').strip()
+                if self.pool_profile is not None and self.model_thinking == 'off' and (
+                        (getattr(message, 'reasoning_content', '') or '').strip()
+                        or ('<think>' in raw and '</think>' not in raw)):
+                    return None, 0, 'thinking_not_disabled'
                 # Compatible with models that output reasoning_content exclusively
                 # (e.g., Qwen3.5, Qwen3.6-27B)
                 if not raw:
