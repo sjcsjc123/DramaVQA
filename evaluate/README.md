@@ -173,29 +173,3 @@ in `results/`.
 Batch summaries are saved in the parent output directory as
 `batch_validate_summary.json`, `batch_prepare_summary.json`, and
 `batch_run_summary.json` after their respective stages.
-
-
-## Local multi-point pool settings
-
-For local vLLM, select the image policy explicitly (do not infer it from a served
-model alias). Use `--evaluation-profile local-qwen` for the verified 32-pixel
-alignment policy or `--evaluation-profile local-glm` for 28-pixel alignment:
-
-```bash
-dramavqa run --task multi-point --drama the_knockout --output-dir runs/multi-point \
-  --model my-model --base-url http://localhost:8000/v1 \
-  --evaluation-profile local-qwen --model-thinking off
-```
-
-These profiles send `chat_template_kwargs.enable_thinking`, use PNG images,
-and default to 4,000 output tokens, temperature 0.1 and top_p 0.01.
-`--model-thinking omit` leaves the server template unchanged; `on` enables thinking.
-`--image-encoding webp-lossless` selects lossless WebP instead of PNG.
-Only select a profile supported by the actual model and server template.
-
-The default `legacy` profile retains the original independent-script behavior
-(JPEG, alignment 28, historical provider-specific request parameters, 1,000 output
-tokens). Local profiles cover the non-tiled pool path; external API tiling is not
-implemented here. Frame preparation settings and model/runtime revisions must
-also match the original run before comparing scores. These settings alone do
-not establish reproduction of historical scores.
