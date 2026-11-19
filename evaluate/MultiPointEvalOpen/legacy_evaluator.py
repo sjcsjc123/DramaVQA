@@ -341,12 +341,13 @@ class MultiPointEvaluator:
     round-robin: each API call rotates to the next key."""
 
     def __init__(self, base_url, api_key, model, image_root, output_dir,
-                 num_workers=2, tpm_limit=0, max_tokens=1000,
+                 num_workers=2, tpm_limit=0, max_tokens=4000,
                  max_retries=6, api_timeout=120.0, limit=0,
                  keys_file='', input_fingerprints=None, reasoning_effort=None,
-                 evaluation_profile='legacy', model_thinking='off', image_encoding='png'):
+                 evaluation_profile='local-qwen', model_thinking='off', image_encoding='png', thinking_transport='chat-template'):
         from .pool_config import load_profile
         self.pool_profile = load_profile(evaluation_profile)
+        self.pool_profile['thinking_transport'] = thinking_transport
         self.model_thinking = model_thinking
         self.image_encoding = image_encoding
         self.model = model
@@ -415,22 +416,10 @@ class MultiPointEvaluator:
                 'text': SCENE_LABEL_TMPL.format(n=orig_idx + 1),
             })
             for pil_img, fname in imgs_with_names:
-                if self.pool_profile is not None:
-                    from .pool_config import image_part
-                    user_content.append(image_part(pil_img, self.pool_profile['alignment_factor'], self.image_encoding))
-                    if subs and (subs.get(fname) or '').strip():
-                        user_content.append({'type': 'text', 'text': subs[fname].strip()})
-                    continue
-                pil_img = align_pil(pil_img)
-                b64 = pil_to_b64(pil_img)
-                user_content.append({
-                    'type': 'image_url',
-                    'image_url': {'url': 'data:image/jpeg;base64,' + b64},
-                })
-                if subs:
-                    sub_text = (subs.get(fname) or '').strip()
-                    if sub_text:
-                        user_content.append({'type': 'text', 'text': sub_text})
+                from .pool_config import image_part
+                user_content.append(image_part(pil_img, self.pool_profile['alignment_factor'], self.image_encoding))
+                if subs and (subs.get(fname) or '').strip():
+                    user_content.append({'type': 'text', 'text': subs[fname].strip()})
 
         return [
             {'role': 'system', 'content': SYSTEM_PROMPT},
@@ -447,14 +436,8 @@ class MultiPointEvaluator:
         n_images = sum(p.get('type') == 'image_url' for p in messages[1]['content'])
         chars = sum(len(p.get('text', '')) for p in messages[1]['content'])
         self.budget.acquire(estimate_tokens(n_images, chars, self.max_tokens))
-        kwargs = dict(model=self.model, messages=messages, max_tokens=self.max_tokens,
-                      temperature=0.1, top_p=0.01)
-        is_vl = 'qwen' in self.model.lower() and '-vl-' in self.model.lower()
-        if not is_vl:
-            kwargs['extra_body'] = {'enable_thinking': False}
-        if self.pool_profile is not None:
-            from .pool_config import request_kwargs
-            kwargs = request_kwargs(self.pool_profile, self.model, messages, self.max_tokens, self.model_thinking)
+        from .pool_config import request_kwargs
+        kwargs = request_kwargs(self.pool_profile, self.model, messages, self.max_tokens, self.model_thinking)
         for attempt in range(self.max_retries):
             if self._routed_block.is_set():
                 return None, 0, 'provider_blocked'
@@ -463,7 +446,7 @@ class MultiPointEvaluator:
                     response = client.chat.completions.create(**kwargs)
                 message = response.choices[0].message
                 raw = (message.content or '').strip()
-                check_thinking = (self.model_thinking == 'off') if self.pool_profile is not None else not is_vl
+                check_thinking = self.model_thinking == 'off'
                 if check_thinking and (getattr(message, 'reasoning_content', '') or '').strip():
                     self._routed_block.set()
                     return None, 0, 'thinking_not_disabled'
@@ -480,103 +463,7 @@ class MultiPointEvaluator:
         return None, 0, 'api_no_response'
 
     def _call_api(self, messages, qa_key):
-        if self.input_fingerprints is not None:
-            return self._call_routed_api(messages)
-        import openai as _openai
-
-        n_imgs = sum(
-            1 for part in messages[1]['content']
-            if isinstance(part, dict) and part.get('type') == 'image_url'
-        )
-        text_chars = sum(
-            len(part.get('text', ''))
-            for part in messages[1]['content']
-            if isinstance(part, dict) and part.get('type') == 'text'
-        )
-        self.budget.acquire(estimate_tokens(n_imgs, text_chars, self.max_tokens))
-
-        for attempt in range(self.max_retries):
-            try:
-                ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                print('{} [{}] model={} attempt={}/{} imgs={}'.format(
-                    ts, qa_key, self.model, attempt + 1, self.max_retries, n_imgs))
-
-                # Follow ask_vllm.py for enable_thinking: omit it for Qwen3-VL because
-                # the siliconflow endpoint rejects it with HTTP 400. For other models
-                # such as Qwen3.6-27B, send enable_thinking=False in top-level
-                # extra_body; this suppresses reasoning_content and reduces completion
-                # tokens.
-                model_lower = self.model.lower()
-                is_qwen_vl = 'qwen' in model_lower and '-vl-' in model_lower
-                is_glm53 = 'glm-5.3' in model_lower or 'glm53' in model_lower.replace('.', '').replace('-', '')
-                create_kwargs = dict(
-                    model=self.model,
-                    messages=messages,
-                    max_tokens=self.max_tokens,
-                    temperature=0.1,
-                    top_p=0.01,
-                )
-                if self.pool_profile is not None:
-                    from .pool_config import request_kwargs
-                    create_kwargs = request_kwargs(self.pool_profile, self.model, messages, self.max_tokens, self.model_thinking)
-                elif is_glm53:
-                    # Native GLM-5.3 template always thinks; enable_thinking=off is invalid.
-                    if self.reasoning_effort:
-                        create_kwargs['reasoning_effort'] = self.reasoning_effort
-                elif not is_qwen_vl:
-                    create_kwargs['extra_body'] = {'enable_thinking': False}
-                resp = self._get_client().chat.completions.create(**create_kwargs)
-
-                message = resp.choices[0].message
-                raw = (message.content or '').strip()
-                if self.pool_profile is not None and self.model_thinking == 'off' and (
-                        (getattr(message, 'reasoning_content', '') or '').strip()
-                        or ('<think>' in raw and '</think>' not in raw)):
-                    return None, 0, 'thinking_not_disabled'
-                # Compatible with models that output reasoning_content exclusively
-                # (e.g., Qwen3.5, Qwen3.6-27B)
-                if not raw:
-                    rc = getattr(resp.choices[0].message, 'reasoning_content', None)
-                    if (rc or '').strip():
-                        raw = rc.strip()
-
-                tokens = resp.usage.total_tokens if resp.usage else 0
-                finish = getattr(resp.choices[0], 'finish_reason', None)
-                return raw, tokens, finish
-
-            except _openai.RateLimitError as e:
-                wait = min(15 * (2 ** attempt), 240) + random.uniform(0, 5)
-                print('[{}] RateLimitError; waiting {:.0f}s: {}'.format(
-                    qa_key, wait, str(e)[:120]))
-                time.sleep(wait)
-
-            except _openai.APITimeoutError as e:
-                wait = min(30 * (2 ** attempt), 120) + random.uniform(0, 5)
-                print('[{}] Timeout; waiting {:.0f}s'.format(qa_key, wait))
-                time.sleep(wait)
-
-            except _openai.OpenAIError as e:
-                status = getattr(e, 'status_code', None)
-                retryable = status is None or status >= 500
-                err_msg = 'OpenAIError status={}: {}'.format(status, str(e)[:240])
-                print('[{}] {}'.format(qa_key, err_msg))
-                if not retryable or attempt == self.max_retries - 1:
-                    return None, 0, 'api_openai_error|' + err_msg
-                wait = min(10 * (2 ** attempt), 120) + random.uniform(0, 5)
-                time.sleep(wait)
-
-            except Exception as e:
-                err_msg = 'Unexpected exception {}: {}'.format(type(e).__name__, str(e)[:240])
-                print('[{}] {}'.format(qa_key, err_msg))
-                if attempt == self.max_retries - 1:
-                    return None, 0, 'api_unexpected_error|' + err_msg
-                time.sleep(15 + random.uniform(0, 3))
-
-        return None, 0, 'api_max_retries'
-
-    # ------------------------------------------------------------------
-    # Single-item evaluation
-    # ------------------------------------------------------------------
+        return self._call_routed_api(messages)
 
     def _eval_one(self, drama, qa_type, qa_id, qa_item, raw_log_path):
         """Evaluate a single question, returning a result dict. qa_item comes from

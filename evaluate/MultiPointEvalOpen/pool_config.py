@@ -5,8 +5,6 @@ from PIL import Image
 
 
 def load_profile(name):
-    if name == 'legacy':
-        return None
     factors = {'local-qwen': 32, 'local-glm': 28}
     return {'alignment_factor': factors[name], 'max_tokens': 4000,
             'temperature': 0.1, 'top_p': 0.01}
@@ -35,5 +33,13 @@ def request_kwargs(profile, model, messages, max_tokens, thinking):
     result = dict(model=model, messages=messages, max_tokens=max_tokens,
                   temperature=profile['temperature'], top_p=profile['top_p'])
     if thinking != 'omit':
-        result['extra_body'] = {'chat_template_kwargs': {'enable_thinking': thinking == 'on'}}
+        transport = profile.get('thinking_transport', 'chat-template')
+        if transport == 'chat-template':
+            result['extra_body'] = {'chat_template_kwargs': {'enable_thinking': thinking == 'on'}}
+        elif transport == 'enable_thinking':
+            result['extra_body'] = {'enable_thinking': thinking == 'on'}
+        elif transport == 'thinking':
+            result['extra_body'] = {'thinking': {'type': 'enabled' if thinking == 'on' else 'disabled'}}
+        else:
+            raise ValueError('Unknown thinking transport')
     return result

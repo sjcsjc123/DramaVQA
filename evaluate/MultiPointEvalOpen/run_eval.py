@@ -26,12 +26,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-retries", type=int, default=6)
     parser.add_argument("--api-timeout", type=float, default=120.0)
     parser.add_argument("--reasoning-effort", choices=("low", "high", "max"))
-    parser.add_argument('--evaluation-profile', choices=('legacy', 'local-qwen', 'local-glm'), default='legacy')
+    parser.add_argument('--evaluation-profile', choices=('local-qwen', 'local-glm'), default='local-qwen')
     parser.add_argument('--model-thinking', choices=('on', 'off', 'omit'), default='off')
+    parser.add_argument('--thinking-transport', choices=('chat-template', 'enable_thinking', 'thinking'), default='chat-template')
     parser.add_argument('--image-encoding', choices=('png', 'webp-lossless'), default='png')
     args = parser.parse_args(argv)
     if args.max_tokens is None:
-        args.max_tokens = 1000 if args.evaluation_profile == 'legacy' else 4000
+        args.max_tokens = 4000
     drama = args.drama or (args.qa.stem if args.qa.suffix.lower() == ".json" else None)
     qa_data, summary = load_multi_point(args.qa, drama=drama)
     print(json.dumps({"drama": drama, **summary}, ensure_ascii=False), flush=True)
@@ -42,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit < 0 or args.num_workers < 1:
         parser.error("--limit must be nonnegative and --num-workers must be positive")
     settings = dict(evaluation_profile=args.evaluation_profile, model_thinking=args.model_thinking,
-                    image_encoding=args.image_encoding, max_tokens=args.max_tokens,
+                    image_encoding=args.image_encoding, thinking_transport=args.thinking_transport, max_tokens=args.max_tokens,
                     model=args.model, base_url=args.base_url)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = args.output_dir / 'evaluation_settings.json'
@@ -65,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         reasoning_effort=args.reasoning_effort,
         evaluation_profile=args.evaluation_profile, model_thinking=args.model_thinking,
-        image_encoding=args.image_encoding,
+        image_encoding=args.image_encoding, thinking_transport=args.thinking_transport,
     )
     evaluator.run(str(args.qa), drama, qa_data=qa_data)
     return 0
