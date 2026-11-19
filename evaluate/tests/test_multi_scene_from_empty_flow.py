@@ -1,4 +1,4 @@
-"""Exercise public multi-scene QA from source videos through a scored answer."""
+"""Exercise public multi-scene QA from face videos through a scored answer."""
 
 import json
 import os
@@ -20,10 +20,10 @@ def test_multi_point_video_to_answer(tmp_path: Path, drama, episodes):
     pytest.importorskip("tqdm")
     from MultiPointEvalOpen.legacy_evaluator import MultiPointEvaluator
 
-    video_dir = tmp_path / "videos" / drama / "video_data" / "v1"
+    video_dir = tmp_path / "videos" / drama / "face_video_data" / "v1"
     video_dir.mkdir(parents=True)
     (video_dir.parent / "version.json").write_text(
-        json.dumps({"video_step": {"active_version": "v1"}}), encoding="utf-8"
+        json.dumps({"face_render_step": {"active_version": "v1"}}), encoding="utf-8"
     )
     for episode in episodes:
         subprocess.run(

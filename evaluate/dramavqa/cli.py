@@ -183,7 +183,6 @@ def engine_command(args, qa):
         result.append("--no_render_subtitle")
     if args.subtitles == "text":
         result.append("--subtitle_text")
-    result.append("--use_rendered_video")
     return result
 
 
@@ -233,7 +232,7 @@ def run_one(args, parser):
     fingerprint = {"qa_sha256": hashlib.sha256(encoded).hexdigest(), "task": args.task,
         "drama": args.drama, "level": args.level, "sample_frames": args.sample_frames,
         "target_width": args.target_width, "subtitles": args.subtitles, "mode": None,
-        "use_rendered_video": True, "questions": selected["questions"]}
+        "video_source": "face_video", "questions": selected["questions"]}
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = args.output_dir / "input_manifest.json"
     if manifest.exists() and json.loads(manifest.read_text()) != fingerprint:
@@ -293,7 +292,7 @@ def discover_dramas(args):
     if args.video_root is not None:
         if not args.video_root.is_dir():
             raise ValueError(f"Video root not found: {args.video_root}")
-        media_dirs = ('video_data', 'face_video_data', 'video_face_data', 'video_face_rendered')
+        media_dirs = ('face_video_data', 'video_face_data', 'video_face_rendered')
         local = {path.name for path in args.video_root.iterdir() if path.is_dir()
                  and any((path / directory).is_dir() for directory in media_dirs)}
         selected = {name: path for name, path in selected.items() if name in local}

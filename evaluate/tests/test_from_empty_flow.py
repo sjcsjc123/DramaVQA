@@ -1,4 +1,4 @@
-"""Exercise the compatibility sampler from a source video and current QA."""
+"""Exercise the compatibility sampler from face videos and current QA."""
 
 import json
 import os
@@ -12,7 +12,7 @@ import pytest
 from SinglePointEvalOpen import legacy_compatible_runner as compatibility
 
 
-@pytest.mark.parametrize("layout", ["versioned", "flat", "rendered"])
+@pytest.mark.parametrize("layout", ["versioned", "flat", "alias"])
 @pytest.mark.parametrize("drama,episode", [("the_knockout", 1), ("breaking_bad", 9)])
 def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layout):
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
@@ -21,29 +21,19 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layou
     pytest.importorskip("tqdm")
 
     media_root = tmp_path / "videos" / drama
-    video_dir = media_root / ("face_video_data" if layout == "rendered" else "video_data")
+    video_dir = media_root / ("video_face_rendered" if layout == "alias" else "face_video_data")
     if layout == "versioned":
         video_dir = video_dir / "v1"
     video_dir.mkdir(parents=True)
     if layout == "versioned":
         (video_dir.parent / "version.json").write_text(
-            json.dumps({"video_step": {"active_version": "v1"}}), encoding="utf-8"
+            json.dumps({"face_render_step": {"active_version": "v1"}}), encoding="utf-8"
         )
     subtitle_dir = media_root / "subtitle_data"
     subtitle_dir.mkdir()
     (subtitle_dir / f"{episode:04d}.json").write_text(json.dumps({
         "object_list": {"0": {"start_frame": 0, "end_frame": 49, "text": "visible dialogue"}}
     }))
-    face_dir = media_root / "face_data"
-    face_dir.mkdir()
-    (face_dir / f"{episode:04d}.json").write_text(json.dumps({"object_list": {
-        str(i): {"start_frame": i, "end_frame": i,
-                 "id_list": {"0": {"name": "Alice", "score": 0.99}},
-                 "geometry": {"active_frame_list": {"0": {"box": {
-                     "left": 1, "top": 20, "right": 40, "bottom": 50}}}}}
-        for i in range(50)
-    }}))
-    # No speaker_data/.workspace/new_roles_map.json is provided.
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
          "testsrc=size=64x64:rate=25:duration=2", "-c:v", "ffv1",
@@ -71,8 +61,7 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layou
          "--drama", drama, "--question_path", str(qa_path),
          "--video_path", str(tmp_path / "videos"), "--image_path", str(image_root),
          "--sample_frames", "4", "--level", "L3", "--only_gen_img",
-         "--no_render_subtitle", "--subtitle_text", "--model_name", "fixture", "--serving_mode", "local"]
-        + (["--use_rendered_video"] if layout == "rendered" else []),
+         "--no_render_subtitle", "--subtitle_text", "--model_name", "fixture", "--serving_mode", "local"],
         cwd=tmp_path, env=env, check=True, capture_output=True, text=True,
     )
 

@@ -53,7 +53,6 @@ def command(args: argparse.Namespace, qa_path: Path) -> list[str]:
         "--serving_mode", "local", "--only_gen_img",
         "--no_render_subtitle", "--subtitle_text", "--use_render_info",
     ]
-    cmd.append("--use_rendered_video")
     return cmd
 
 

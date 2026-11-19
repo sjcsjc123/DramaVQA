@@ -161,7 +161,6 @@ except Exception:
     types = None
 
 
-
 BASE_URL = os.environ.get("OPENAI_BASE_URL", "http://localhost:8000/v1")
 API_KEY = os.environ.get("OPENAI_API_KEY", "EMPTY")
 
@@ -179,24 +178,6 @@ MODEL_CKPT_MAP = {
     "gemini-3-pro": "gemini-3-pro-preview",
     "gemini-3.1-pro": "gemini-3.1-pro-preview",
 }
-
-replace_names ={'Robert Crawley Earl of Grantham':'Robert Crawley',
-                'Cora Crawley Countess of Grantham':'Cora Crawley',
-                'Violet Crawley  Dowager Countess of Grantham':'Violet Crawley',
-                'Doctor at Moorfields Hospital':'Doctor at Moorfields Hospital',
-                'Violet Crawley- Dowager Countess of Grantham':'Violet Crawley',
-                'Cora Crawley- Countess of Grantham':'Cora Crawley',
-                'Robert Crawley- Earl of Grantham':'Robert Crawley',
-                'General Sir Herbert Strutt':'Herbert Strutt',
-                'Violet Crawley Dowager Countess of Grantham':'Violet Crawley',
-                'The Velvet Violin Club Guest':'The Velvet Violin Club Guest',
-                'Hugh Shrimpie MacClare Marquess of Flintshire':'Hugh Shrimpie MacClare',
-                'Susan MacClare Marchioness of Flintshire':'Susan MacClare',
-                "Daisy Mason": "Daisy Robinson",
-                "Baxter": "Phyllis Baxter",
-                "Lady Sybil Branson": "Lady Sybil Crawley",
-                "Gwen Harding": "Gwen Dawson",
-                '其他':'Others'}
 
 
 DRAMA_CAP_MAP = {
@@ -683,7 +664,6 @@ class LLMInference:
         self.reasoning_effort = self._resolve_reasoning_effort()
 
         self.use_render_info = args.use_render_info
-        self.use_rendered_video = True
         self.parallel = args.parallel
         self.num_workers = args.num_workers
         self.max_output_tokens = API_MAX_TOKENS
@@ -868,19 +848,17 @@ class LLMInference:
         if self.only_gen_img:
             cumulative_duration = 0.0
             for season, video_path in enumerate(self.video_paths):
-                if self.use_rendered_video:
-                    video_dir = None
-                    face_video_root = os.path.join(video_path, 'face_video_data')
-                    for directory in ('face_video_data', 'video_face_data', 'video_face_rendered'):
-                        video_dir = self._resolve_versioned_dir(
-                            os.path.join(video_path, directory), 'face_render_step',
-                            fallback_keyword='face_video')
-                        if video_dir is not None:
-                            break
-                    if video_dir is None:
-                        raise FileNotFoundError(f"Required face video directory not found: {face_video_root}")
-                    video_list = os.listdir(video_dir)
-                    video_list.sort()
+                video_dir = None
+                face_video_root = os.path.join(video_path, 'face_video_data')
+                for directory in ('face_video_data', 'video_face_data', 'video_face_rendered'):
+                    video_dir = self._resolve_versioned_dir(
+                        os.path.join(video_path, directory), 'face_render_step',
+                        fallback_keyword='face_video')
+                    if video_dir is not None:
+                        break
+                if video_dir is None:
+                    raise FileNotFoundError(f"Required face video directory not found: {face_video_root}")
+                video_list = sorted(os.listdir(video_dir))
 
                 for video_i in tqdm(video_list):
                     if '.mp4' in video_i or '.mkv' in video_i:
@@ -1279,7 +1257,7 @@ class LLMInference:
             'use_render_info': self.use_render_info,
             'render_subtitle': self.render_subtitle,
             'subtitle_text': self.subtitle_text,
-            'use_rendered_video': getattr(self, 'use_rendered_video', False),
+            'video_source': 'face_video',
             'image_path': self.image_path,
             'question_path': self.question_path,
             'answer_regex': [
@@ -2438,37 +2416,14 @@ class LLMInference:
         return sample_res
 
     def render(self, sample_res, save_path):
-        def process_single_frame(im_id, images, frame_indices, frame_face_data_epi_sea,
-                             subtitle_data, save_render_path, season, episode, sea_epi,
-                             skip_face_boxes=False):
-            """Handle rendering work for a single video frame. Args: im_id (int): index of
-            the current frame images (numpy.ndarray): array containing all frames
-            frame_indices (list): list of frame IDs corresponding to each frame
-            frame_face_data_epi_sea (dict): dictionary storing face data for each frame
-            subtitle_data (dict): dictionary storing subtitle data save_render_path
-            (str): path to save rendered image season (str): season information episode
-            (str): episode information sea_epi (str): season-episode combination
-            identifier Returns: None: function does not return a value; the processed
-            image is saved to the specified path"""
+        def process_single_frame(im_id, images, frame_indices, subtitle_data,
+                                 save_render_path, season, episode):
+            """Save a face-video frame, resizing and optionally burning subtitles."""
             frame = images[im_id]
-            # Use local variables instead of instance attributes: Since this function is
-            # executed concurrently by 128 threads, writing instance attributes may
-            # overwrite each other, leading to incorrect bbox scaling ratios.
-            orig_frame_width = frame.shape[1]
             if self.target_width or self.scale_factor != 1:
                 frame = self.resize_img_pil(frame)
 
             frame_id = frame_indices[im_id]
-
-            # Draw Face Boxes (When using pre-rendered face video, the frame already has
-            # boxes, so no need to redraw)
-            if not skip_face_boxes and frame_id in frame_face_data_epi_sea.keys():
-                face_data = frame_face_data_epi_sea[frame_id]
-                # bbox refers to coordinates in the original resolution; convert to
-                # scaled width by dividing by original width. In target_width mode,
-                # scale_factor no longer represents the actual scaling ratio.
-                box_scale = frame.shape[1] / float(orig_frame_width or frame.shape[1])
-                frame = self.draw_box(face_data, frame, 0.43, sea_epi, box_scale)
 
             # Render Subtitles
             if self.render_subtitle == True:
@@ -2491,32 +2446,10 @@ class LLMInference:
             images = sample_item[1]
             frame_indices = sample_item[2]
 
-            video_path = self.episode_info[sea_epi]['video_path']
             drama_root = self._get_drama_root(sea_epi)
 
             season = sea_epi.split('_')[0]
             episode = sea_epi.split('_')[1].zfill(4)
-
-            frame_face_data_epi_sea = {}
-            if not self.use_rendered_video:
-                face_root = os.path.join(drama_root, 'face_data')
-                face_dir = self._resolve_versioned_dir(
-                    face_root, 'face_recognition_step', fallback_keyword='insightface')
-                if face_dir is None:
-                    print(f'WARNING: face_data not found for {self.drama} episode {episode}')
-                else:
-                    face_path = os.path.join(face_dir, episode + '.json')
-                    try:
-                        with open(face_path, 'r', encoding='utf-8') as fr:
-                            face_data = json.load(fr)
-                            for obj_idx, obj_info in face_data['object_list'].items():
-                                assert obj_info['start_frame'] == obj_info['end_frame']
-                                if obj_info['start_frame'] in frame_face_data_epi_sea.keys():
-                                    frame_face_data_epi_sea[obj_info['start_frame']].append(obj_info)
-                                else:
-                                    frame_face_data_epi_sea[obj_info['start_frame']] = [obj_info]
-                    except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
-                        print(f'WARNING: face_data unreadable for {self.drama} episode {episode}: {e}')
 
             subtitle_data = None
             # When flashing is disabled but subtitle text is required, still need to
@@ -2542,13 +2475,10 @@ class LLMInference:
                 worker = partial(process_single_frame,
                                 images=images,
                                 frame_indices=frame_indices,
-                                frame_face_data_epi_sea=frame_face_data_epi_sea,
                                 subtitle_data=subtitle_data,
                                 save_render_path=save_render_path,
                                 season=season,
-                                episode=episode,
-                                sea_epi=sea_epi,
-                                skip_face_boxes=self.use_rendered_video)
+                                episode=episode)
 
                 # Submit tasks for all image indices
                 # map will execute the worker function for every index in the range
@@ -2852,102 +2782,6 @@ class LLMInference:
         total_sec = h * 3600 + m * 60 + s + int(ms) / 1000.0
         return total_sec
 
-    def _load_role_mapping(self, drama_root):
-        """Read optional role-name overrides; retain face labels when unavailable."""
-        speaker_path = os.path.join(drama_root, 'speaker_data')
-        speaker_dir = self._resolve_versioned_dir(
-            speaker_path, ('speaker_recognition_step', 'speaker_processing_step'))
-        path = os.path.join(speaker_dir or speaker_path, '.workspace/new_roles_map.json')
-        try:
-            with open(path, encoding='utf-8') as stream:
-                mapping = json.load(stream)
-        except (OSError, ValueError):
-            return {}
-        if not isinstance(mapping, dict):
-            return {}
-        return {key: value for key, value in mapping.items()
-                if isinstance(key, str) and isinstance(value, str)}
-
-    def draw_box(self, frame_face_data, img, thred, sea_epi, scale_factor):
-        # if scale_factor != 1:
-        #     img = self.resize_img(img, scale_factor)
-        a = img.shape[1] / 1920
-
-        font_size = max(int(50 * a), 15)  # Prevent font from being too small
-        font = load_render_font(font_size)
-        text_bbox = []
-        pil_img = Image.fromarray(img)
-        draw = ImageDraw.Draw(pil_img)
-
-        mapping_name = self._load_role_mapping(self._get_drama_root(sea_epi))
-
-        episode = sea_epi.split('_')[1].zfill(4)
-        for face in frame_face_data:
-            role_name = face["id_list"]['0']['name']
-            confidence = float(face["id_list"]['0']['score'])
-            bbox = list(face["geometry"]['active_frame_list']['0']['box'].values())
-            if confidence < thred or f'{episode}_pro' in role_name:
-                continue
-            if '少年' in role_name:
-                role_name = '少年' + role_name.replace('少年','')
-            elif '幼年' in role_name:
-                role_name = '幼年' + role_name.replace('幼年', '')
-            elif '童年' in role_name:
-                role_name = '童年' + role_name.replace('童年', '')
-            elif '成年' in role_name:
-                role_name = '成年' + role_name.replace('成年', '')
-            elif '青年' in role_name:
-                role_name = '青年' + role_name.replace('青年', '')
-
-            role_name = role_name.replace('（）','').replace('()','')
-            if '新角色' in role_name:
-                if role_name in mapping_name.keys():
-                    role_name = mapping_name[role_name]
-                else:
-                    role_name = '其他'
-
-            if role_name in replace_names.keys():
-                # print(f'*****{role_name}***{replace_names[role_name]}******')
-                role_name = replace_names[role_name]
-            if 'New Role' in role_name or '新角色' in role_name:
-                if role_name in mapping_name.keys():
-                    role_name = mapping_name[role_name]
-                else:
-                    role_name = 'Others'
-
-            left, top, right, bottom = font.getbbox(role_name)
-            text_width = right - left
-            text_height = bottom - top
-
-            bbox = [max(0, _) * scale_factor  for _ in bbox]
-            bbox[1] = max(text_height+5, bbox[1])
-            bbox[2] = min(img.shape[1],  bbox[2])
-            if bbox[0] > bbox[2] or bbox[1] > bbox[3]:
-                continue
-
-            draw.rectangle(bbox, outline=(255, 0, 0), width=math.ceil(4*scale_factor))  # Here, a red line is used with a width of 2
-
-            text_x = bbox[0] + (bbox[2] - bbox[0] - text_width) // 2
-            text_y = bbox[1] - text_height - 5
-
-            Bx1, By1, Bx2, By2 = text_x - 5, text_y - 5, text_x + text_width + 5, text_y + text_height + 5
-            # Handle name box overlap
-            for box_old in text_bbox:
-                attemp = 0
-                iou = self.calculate_iou(box_old, [Bx1, By1, Bx2, By2])
-                while iou > 0.05 and attemp < 5:
-                    By1 -= 20
-                    By2 -= 20
-                    text_y -= 20
-                    attemp += 1
-                    iou = self.calculate_iou(box_old, [Bx1, By1, Bx2, By2])
-
-            # Draw text background rectangle
-            draw.rectangle([(Bx1, By1), (Bx2, By2)], fill=(255, 0, 0))
-            text_bbox.append([Bx1, By1, Bx2, By2])
-            # Draw text
-            draw.text((text_x, text_y), role_name, fill=(255, 255, 255), font=font)
-        return np.array(pil_img)
 
     # Qwen-VL: patch_size(14) * spatial_merge_size(2) = 28, width and height must be
     # aligned to multiples of 28, otherwise image token placeholder count does not match
@@ -3001,37 +2835,6 @@ class LLMInference:
         w, h = img.size
         return img.resize(self._target_size(w, h), Image.Resampling.LANCZOS)
 
-    def calculate_iou(self, box1, box2):
-        """Compute the IoU (Intersection over Union) between two bounding boxes. Args:
-        box1: [x1, y1, x2, y2] box2: [x1, y1, x2, y2] Returns: iou: float, Intersection
-        over Union, in range [0, 1]"""
-        x1_1, y1_1, x2_1, y2_1 = box1
-        x1_2, y1_2, x2_2, y2_2 = box2
-
-        # Calculate the coordinates of the intersection region
-        inter_x1 = max(x1_1, x1_2)
-        inter_y1 = max(y1_1, y1_2)
-        inter_x2 = min(x2_1, x2_2)
-        inter_y2 = min(y2_1, y2_2)
-
-        # Calculate the intersection area
-        inter_width = max(0, inter_x2 - inter_x1)
-        inter_height = max(0, inter_y2 - inter_y1)
-        inter_area = inter_width * inter_height
-
-        # Calculate the individual areas
-        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
-
-        # Compute the union area
-        union_area = area1 + area2 - inter_area
-
-        # Avoid division by zero
-        if union_area == 0:
-            return 0.0
-
-        iou = inter_area / union_area
-        return iou
 
     def get_speaker(self, time, sample_res, has_season=False):
         speaker_save_info = {}
@@ -3191,10 +2994,6 @@ def main(args):
                         action='store_true',
                         default=False,
                         help='Another example parameter')
-    parser.add_argument('--use_rendered_video',
-                        action='store_true',
-                        default=False,
-                        help='Read pre-rendered face videos instead of drawing face boxes.')
     parser.add_argument('--parallel',
                          action='store_true',
                          default=False,
