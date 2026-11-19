@@ -113,7 +113,6 @@ def build_parser():
         p.add_argument("--target-width", type=int, default=392)
         p.add_argument("--level", choices=("L3", "L4", "L5", "L6"))
         p.add_argument("--subtitles", choices=("text", "burn", "none"), default="text")
-        p.add_argument("--use-rendered-video", action="store_true")
         p.add_argument('--evaluation-profile', choices=('local-qwen', 'local-glm'), default='local-qwen')
         p.add_argument('--model-thinking', choices=('on', 'off', 'omit'), default='off')
         p.add_argument('--thinking-transport', choices=('chat-template', 'enable_thinking', 'thinking'), default='chat-template')
@@ -153,7 +152,7 @@ def engine_command(args, qa):
                 "--kind", "multi_point" if args.task == "multi-point" else "multi_hop",
                 "--video-root", str(args.video_root), "--output-root", str(args.output_dir),
                 "--sample-frames", str(args.sample_frames), "--target-width", str(args.target_width),
-            ] + (["--use-rendered-video"] if args.use_rendered_video else [])
+            ]
         module = "MultiPointEvalOpen.run_eval" if args.task == "multi-point" else "MultiHopEvalOpen.run_eval"
         return cmd + [module] + common + [
             "--image-root", str(image_data_root(args)), "--output-dir", str(args.output_dir / "results"),
@@ -184,8 +183,7 @@ def engine_command(args, qa):
         result.append("--no_render_subtitle")
     if args.subtitles == "text":
         result.append("--subtitle_text")
-    if args.use_rendered_video:
-        result.append("--use_rendered_video")
+    result.append("--use_rendered_video")
     return result
 
 
@@ -235,7 +233,7 @@ def run_one(args, parser):
     fingerprint = {"qa_sha256": hashlib.sha256(encoded).hexdigest(), "task": args.task,
         "drama": args.drama, "level": args.level, "sample_frames": args.sample_frames,
         "target_width": args.target_width, "subtitles": args.subtitles, "mode": None,
-        "use_rendered_video": args.use_rendered_video, "questions": selected["questions"]}
+        "use_rendered_video": True, "questions": selected["questions"]}
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = args.output_dir / "input_manifest.json"
     if manifest.exists() and json.loads(manifest.read_text()) != fingerprint:

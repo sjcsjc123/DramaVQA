@@ -43,3 +43,11 @@ def test_legacy_profile_is_rejected():
     from MultiPointEvalOpen.pool_config import load_profile
     with pytest.raises(KeyError):
         load_profile('legacy')
+
+def test_prepare_always_uses_face_video():
+    from types import SimpleNamespace
+    from pathlib import Path
+    from MultiPointEvalOpen.prepare_frames import command
+    args = SimpleNamespace(python=Path('python'), drama='demo', video_root=Path('media'),
+        output_root=Path('out'), sample_frames=256, target_width=392)
+    assert '--use_rendered_video' in command(args, Path('qa.json'))

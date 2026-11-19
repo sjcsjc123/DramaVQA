@@ -683,7 +683,7 @@ class LLMInference:
         self.reasoning_effort = self._resolve_reasoning_effort()
 
         self.use_render_info = args.use_render_info
-        self.use_rendered_video = getattr(args, 'use_rendered_video', False)
+        self.use_rendered_video = True
         self.parallel = args.parallel
         self.num_workers = args.num_workers
         self.max_output_tokens = API_MAX_TOKENS
@@ -878,25 +878,7 @@ class LLMInference:
                         if video_dir is not None:
                             break
                     if video_dir is None:
-                        # Skip the task if the episode is incomplete or the directory
-                        # name does not match. Do not let a single missing episode
-                        # prevent the entire evaluation round from starting.
-                        print(f"[WARN] Face video directory not found; skipping: {face_video_root}")
-                        self.skipped_videos.append({'path': face_video_root, 'reason': 'dir_not_found'})
-                        continue
-                    video_list = os.listdir(video_dir)
-                    video_list.sort()
-                else:
-                    video_data = os.path.join(video_path, 'video_data')
-                    if not os.path.exists(video_data):
-                        print(f"[WARN] video_data directory not found; skipping: {video_data}")
-                        self.skipped_videos.append({'path': video_data, 'reason': 'dir_not_found'})
-                        continue
-                    video_dir = self._resolve_versioned_dir(video_data, 'video_step')
-                    if video_dir is None:
-                        print(f"[WARN] No subdirectories under video_data; skipping: {video_data}")
-                        self.skipped_videos.append({'path': video_data, 'reason': 'no_subdir'})
-                        continue
+                        raise FileNotFoundError(f"Required face video directory not found: {face_video_root}")
                     video_list = os.listdir(video_dir)
                     video_list.sort()
 
