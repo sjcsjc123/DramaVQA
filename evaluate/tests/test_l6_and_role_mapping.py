@@ -1,5 +1,4 @@
-"""Regressions for full-drama CLI input and optional face-role maps."""
-import importlib
+"""Regressions for full-drama CLI input from face videos."""
 import json
 import os
 from pathlib import Path
@@ -13,19 +12,6 @@ import pytest
 
 from SinglePointEvalOpen.qa_format import load_qa, validate_qa
 from dramavqa.cli import main
-
-
-@pytest.mark.parametrize('module', ['SinglePointEvalOpen.legacy_compatible_runner'])
-@pytest.mark.parametrize('mapping', [None, '{invalid', '[]', '{"Alice": "Alicia"}'])
-def test_optional_role_map(module, mapping, tmp_path):
-    cls = importlib.import_module(module).LLMInference
-    engine = cls.__new__(cls)
-    if mapping is not None:
-        path = tmp_path / 'speaker_data/.workspace/new_roles_map.json'
-        path.parent.mkdir(parents=True)
-        path.write_text(mapping)
-    assert engine._load_role_mapping(str(tmp_path)) == (
-        {'Alice': 'Alicia'} if mapping == '{"Alice": "Alicia"}' else {})
 
 
 def test_l6_is_preserved_and_checked_before_running(tmp_path, capsys):
@@ -50,26 +36,19 @@ def test_l6_is_preserved_and_checked_before_running(tmp_path, capsys):
 
 
 @pytest.mark.parametrize('level', ['L3', 'L4', 'L5', 'L6'])
-def test_public_video_to_ten_answers_without_role_map(tmp_path, level):
+def test_public_video_to_ten_answers_from_face_video(tmp_path, level):
     if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
         pytest.skip('FFmpeg and ffprobe required')
     drama = 'breaking_bad'
     root = tmp_path / 'videos' / drama
-    video = root / 'video_data'
-    face = root / 'face_data'
+    video = root / 'face_video_data'
     subtitle = root / 'subtitle_data'
-    for p in (video, face, subtitle):
+    for p in (video, subtitle):
         p.mkdir(parents=True)
     for ep in (1, 2):
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
                         '-i', 'testsrc=size=64x64:rate=25:duration=2', '-c:v', 'ffv1',
                         str(video / f'{ep:04d}.mkv')], check=True)
-        (face / f'{ep:04d}.json').write_text(json.dumps({'object_list': {
-            str(i): {'start_frame': i, 'end_frame': i,
-                     'id_list': {'0': {'name': 'Alice', 'score': 0.99}},
-                     'geometry': {'active_frame_list': {'0': {'box': {
-                         'left': 1, 'top': 20, 'right': 40, 'bottom': 50}}}}}
-            for i in range(50)}}))
         (subtitle / f'{ep:04d}.json').write_text(json.dumps({'object_list': {'0': {
             'start_frame': 0, 'end_frame': 49, 'text': 'A test pattern'}}}))
     clip = {f'L{n}_time': '0001-00:00:00.000_0001-00:00:01.960' for n in range(2, 6)}

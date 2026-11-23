@@ -29,7 +29,7 @@ def test_all_selects_only_requested_collection_and_limits_per_drama(tmp_path, so
     (root / 'Training_Set/train.json').write_text('{}')
     video_root = tmp_path / 'videos'
     for name in ('a_show', 'z_show'):
-        (video_root / name / 'video_data').mkdir(parents=True)
+        (video_root / name / 'face_video_data').mkdir(parents=True)
     (mini / 'not_downloaded.json').write_bytes(FIXTURE.read_bytes())
     args = ['--data-root', str(root)]
     if source == 'directory':
@@ -61,7 +61,7 @@ def test_batch_validation_continues_and_reports_failure(tmp_path):
     output = tmp_path / 'out'
     video_root = tmp_path / 'videos'
     for name in ('a_broken', 'z_good'):
-        (video_root / name / 'video_data').mkdir(parents=True)
+        (video_root / name / 'face_video_data').mkdir(parents=True)
     assert main(['validate', '--task', 'single-point', '--qa', str(folder),
                  '--drama', 'all', '--video-root', str(video_root), '--output-dir', str(output)]) == 1
     report = json.loads((output / 'batch_validate_summary.json').read_text())
@@ -90,7 +90,7 @@ def test_all_dramas_isolated_video_to_http_pipeline(tmp_path, task):
     question = dict(Question='What is visible?', Options='A. Pattern\nB. Nothing',
                     Answer='A', Dimension='Object Presence')
     for drama in ('a_show', 'z_show'):
-        video = video_root / drama / 'video_data' / '0001.mkv'
+        video = video_root / drama / 'face_video_data' / '0001.mkv'
         video.parent.mkdir(parents=True)
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
                         'testsrc=size=64x64:rate=25:duration=2', '-c:v', 'ffv1', str(video)], check=True)

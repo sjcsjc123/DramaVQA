@@ -53,8 +53,6 @@ def command(args: argparse.Namespace, qa_path: Path) -> list[str]:
         "--serving_mode", "local", "--only_gen_img",
         "--no_render_subtitle", "--subtitle_text", "--use_render_info",
     ]
-    if args.use_rendered_video:
-        cmd.append("--use_rendered_video")
     return cmd
 
 
@@ -69,7 +67,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target-width", type=int, default=392)
     parser.add_argument("--limit-questions", type=int, default=0)
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
-    parser.add_argument("--use-rendered-video", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--prepare-only", action="store_true", help="write frame QA without extracting")
     args = parser.parse_args(argv)

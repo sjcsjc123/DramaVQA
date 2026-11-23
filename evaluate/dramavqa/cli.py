@@ -113,7 +113,10 @@ def build_parser():
         p.add_argument("--target-width", type=int, default=392)
         p.add_argument("--level", choices=("L3", "L4", "L5", "L6"))
         p.add_argument("--subtitles", choices=("text", "burn", "none"), default="text")
-        p.add_argument("--use-rendered-video", action="store_true")
+        p.add_argument('--evaluation-profile', choices=('local-qwen', 'local-glm'), default='local-qwen')
+        p.add_argument('--model-thinking', choices=('on', 'off', 'omit'), default='off')
+        p.add_argument('--thinking-transport', choices=('chat-template', 'enable_thinking', 'thinking'), default='chat-template')
+        p.add_argument('--image-encoding', choices=('png', 'webp-lossless'), default='png')
         p.add_argument("--model", help="served model ID")
         p.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:8000/v1"))
         p.add_argument("--num-workers", type=int, default=1)
@@ -149,14 +152,15 @@ def engine_command(args, qa):
                 "--kind", "multi_point" if args.task == "multi-point" else "multi_hop",
                 "--video-root", str(args.video_root), "--output-root", str(args.output_dir),
                 "--sample-frames", str(args.sample_frames), "--target-width", str(args.target_width),
-            ] + (["--use-rendered-video"] if args.use_rendered_video else [])
+            ]
         module = "MultiPointEvalOpen.run_eval" if args.task == "multi-point" else "MultiHopEvalOpen.run_eval"
         return cmd + [module] + common + [
             "--image-root", str(image_data_root(args)), "--output-dir", str(args.output_dir / "results"),
             "--model", args.model, "--base-url", args.base_url,
             "--num-workers", str(args.num_workers), "--max-tokens", str(args.max_tokens),
             "--api-timeout", str(args.api_timeout),
-        ]
+        ] + (["--evaluation-profile", args.evaluation_profile, "--model-thinking", args.model_thinking,
+              "--image-encoding", args.image_encoding, "--thinking-transport", args.thinking_transport] if args.task in ("multi-point", "multi-hop") else [])
     if args.backend == "conan" and args.command == "run":
         return cmd + ["SinglePointEvalOpen.conan_runner"] + common + [
             "--image-root", str(frame_root(args)), "--output-root", str(args.output_dir / "results"),
@@ -179,8 +183,6 @@ def engine_command(args, qa):
         result.append("--no_render_subtitle")
     if args.subtitles == "text":
         result.append("--subtitle_text")
-    if args.use_rendered_video:
-        result.append("--use_rendered_video")
     return result
 
 
@@ -188,7 +190,7 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.max_tokens is None:
-        args.max_tokens = 4000 if args.backend == "conan" else 1000
+        args.max_tokens = 4000 if args.backend == "conan" or args.task in ("multi-point", "multi-hop") else 1000
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.drama):
         parser.error("drama must contain only letters, digits, underscores or hyphens")
     if args.limit < 0 or min(args.sample_frames, args.target_width, args.num_workers, args.max_tokens, args.api_timeout) <= 0:
@@ -230,7 +232,7 @@ def run_one(args, parser):
     fingerprint = {"qa_sha256": hashlib.sha256(encoded).hexdigest(), "task": args.task,
         "drama": args.drama, "level": args.level, "sample_frames": args.sample_frames,
         "target_width": args.target_width, "subtitles": args.subtitles, "mode": None,
-        "use_rendered_video": args.use_rendered_video, "questions": selected["questions"]}
+        "video_source": "face_video", "questions": selected["questions"]}
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = args.output_dir / "input_manifest.json"
     if manifest.exists() and json.loads(manifest.read_text()) != fingerprint:
@@ -290,7 +292,7 @@ def discover_dramas(args):
     if args.video_root is not None:
         if not args.video_root.is_dir():
             raise ValueError(f"Video root not found: {args.video_root}")
-        media_dirs = ('video_data', 'face_video_data', 'video_face_data', 'video_face_rendered')
+        media_dirs = ('face_video_data', 'video_face_data', 'video_face_rendered')
         local = {path.name for path in args.video_root.iterdir() if path.is_dir()
                  and any((path / directory).is_dir() for directory in media_dirs)}
         selected = {name: path for name, path in selected.items() if name in local}
