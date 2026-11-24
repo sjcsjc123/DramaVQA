@@ -246,7 +246,7 @@ SYS_PROMPT_MODE = "full"
 
 
 def resolve_system_content(system_content):
-    """Resolve the original full prompt after runtime subtitle settings are applied."""
+    """Resolve the full or thinking prompt with fixed text-subtitle instructions."""
     if THINK_MODE:
         return _think_prompt()
     is_group = system_content == GROUP_MESSAGE_SYSTEM
