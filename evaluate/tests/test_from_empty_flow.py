@@ -61,7 +61,7 @@ def test_from_empty_video_to_compatibility_input(tmp_path, drama, episode, layou
          "--drama", drama, "--question_path", str(qa_path),
          "--video_path", str(tmp_path / "videos"), "--image_path", str(image_root),
          "--sample_frames", "4", "--level", "L3", "--only_gen_img",
-         "--model_name", "fixture", "--serving_mode", "local"],
+         "--model_name", "fixture"],
         cwd=tmp_path, env=env, check=True, capture_output=True, text=True,
     )
 

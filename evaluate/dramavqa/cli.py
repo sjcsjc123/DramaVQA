@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -16,6 +15,8 @@ from SinglePointEvalOpen.qa_format import validate_qa
 from MultiPointEvalOpen.qa_format import validate_multi_point
 from MultiHopEvalOpen.qa_format import validate_multi_hop
 from . import __version__
+from .runtime import (add_execution_arguments, child_environment, execution_arguments,
+                      execution_settings, validate_execution_settings)
 
 TASKS = ("single-point", "multi-point", "multi-hop")
 
@@ -117,14 +118,16 @@ def build_parser():
         p.add_argument('--thinking-transport', choices=('chat-template', 'enable_thinking', 'thinking'), default='chat-template')
         p.add_argument('--image-encoding', choices=('png', 'webp-lossless'), default='png')
         p.add_argument("--model", help="served model ID")
-        p.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:8000/v1"))
+        p.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
         p.add_argument("--num-workers", type=int, default=1)
-        p.add_argument("--max-tokens", type=int, help="output token limit; default: 1000 for API, 4000 for Conan")
+        p.add_argument("--max-tokens", type=int, help="output token limit; default: 1000 for single-point API, 4000 for multi-scene/Conan")
         p.add_argument("--api-timeout", type=float, default=120)
+        add_execution_arguments(p)
+        p.set_defaults(temperature=None)
         p.add_argument("--prompt-mode", choices=("full",), default="full",
                        help="only full is supported; preserves the original prompt")
         p.add_argument("--thinking", choices=("on", "off"), default="off",
-                       help="full prompt reasoning instructions for API single-point; independent of model-side ENABLE_THINKING")
+                       help="full prompt reasoning instructions for API single-point; independent of --model-thinking")
         p.add_argument("--backend", choices=("openai", "conan"), default="openai")
         p.add_argument("--conan-eval", type=Path)
         p.add_argument("--model-path", type=Path, help="Conan checkpoint directory")
@@ -150,6 +153,7 @@ def engine_command(args, qa):
                 "--kind", "multi_point" if args.task == "multi-point" else "multi_hop",
                 "--video-root", str(args.video_root), "--output-root", str(args.output_dir),
                 "--sample-frames", str(args.sample_frames), "--target-width", str(args.target_width),
+                "--decode-threads", str(args.decode_threads),
             ]
         module = "MultiPointEvalOpen.run_eval" if args.task == "multi-point" else "MultiHopEvalOpen.run_eval"
         return cmd + [module] + common + [
@@ -157,7 +161,7 @@ def engine_command(args, qa):
             "--model", args.model, "--base-url", args.base_url,
             "--num-workers", str(args.num_workers), "--max-tokens", str(args.max_tokens),
             "--api-timeout", str(args.api_timeout),
-        ] + (["--evaluation-profile", args.evaluation_profile, "--model-thinking", args.model_thinking,
+        ] + execution_arguments(args) + (["--evaluation-profile", args.evaluation_profile, "--model-thinking", args.model_thinking,
               "--image-encoding", args.image_encoding, "--thinking-transport", args.thinking_transport] if args.task in ("multi-point", "multi-hop") else [])
     if args.backend == "conan" and args.command == "run":
         return cmd + ["SinglePointEvalOpen.conan_runner"] + common + [
@@ -167,16 +171,23 @@ def engine_command(args, qa):
             "--level", args.level, "--sample-frames", str(args.sample_frames),
             "--image-subdir", image_data_root(args).parent.name,
             "--drama-image-map", f"{args.drama}={args.drama}",
-            "--max-new-tokens", str(args.max_tokens),
+            "--max-new-tokens", str(args.max_tokens), "--temperature", str(args.temperature),
+            "--num-processes", str(args.num_workers),
         ]
     result = cmd + ["SinglePointEvalOpen.legacy_compatible_runner",
         "--question_path", str(qa), "--drama", args.drama,
         "--image_path", str(frame_root(args)), "--result_path", str(args.output_dir / "results"),
-        "--model_name", args.model or "frame-preparation", "--serving_mode", "local",
+        "--model_name", args.model or "frame-preparation",
         "--sample_frames", str(args.sample_frames), "--target_width", str(args.target_width),
-        "--level", args.level, "--num_workers", str(args.num_workers), "--use_render_info"]
+        "--level", args.level, "--num_workers", str(args.num_workers), "--use_render_info",
+        "--base-url", args.base_url, "--max-tokens", str(args.max_tokens),
+        "--api-timeout", str(args.api_timeout), "--thinking", args.thinking,
+        "--enable_thinking", args.model_thinking, "--thinking-transport", args.thinking_transport,
+        "--evaluation-profile", args.evaluation_profile, "--image-encoding", args.image_encoding] + execution_arguments(args)
     if args.command == "prepare":
         result += ["--only_gen_img", "--video_path", str(args.video_root)]
+    elif args.num_workers > 1:
+        result += ['--parallel']
     return result
 
 
@@ -185,14 +196,25 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.max_tokens is None:
         args.max_tokens = 4000 if args.backend == "conan" or args.task in ("multi-point", "multi-hop") else 1000
+    if args.temperature is None:
+        args.temperature = 1.0 if args.backend == 'conan' else 0.1
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.drama):
         parser.error("drama must contain only letters, digits, underscores or hyphens")
     if args.limit < 0 or min(args.sample_frames, args.target_width, args.num_workers, args.max_tokens, args.api_timeout) <= 0:
         parser.error("limit must be nonnegative; other numeric limits must be positive")
+    try:
+        validate_execution_settings(args)
+    except ValueError as exc:
+        parser.error(str(exc))
     multi = args.task in ("multi-point", "multi-hop")
     args.level = args.level or "L3"
     if multi and args.level != "L3":
         parser.error("multi-scene evaluation uses L3")
+    from .runtime import validate_task_settings
+    try:
+        validate_task_settings(args, multi=multi)
+    except ValueError as exc:
+        parser.error(str(exc))
     if multi and args.command == "prepare" and args.image_root:
         parser.error("multi-scene preparation writes OUTPUT_DIR/images; omit --image-root")
     if args.thinking == "on" and (multi or args.backend == "conan"):
@@ -235,15 +257,16 @@ def run_one(args, parser):
     qa = args.output_dir / "inputs" / f"{args.drama}.json"
     qa.parent.mkdir(exist_ok=True)
     qa.write_bytes(encoded)
-    env = os.environ.copy()
-    env.update(OPENAI_BASE_URL=args.base_url, LOCAL_API_TIMEOUT=str(args.api_timeout),
-               API_MAX_TOKENS=str(args.max_tokens), SYS_PROMPT_MODE="full", THINK_MODE="1" if args.thinking == "on" else "0")
-    # API credentials are read only from the environment and never written to manifests.
+    env = child_environment()
+    # Credentials stay in the process environment and never enter manifests/arguments.
     if args.command == "run":
         run_settings = {"backend": args.backend, "model": args.model, "model_path": str(args.model_path),
                         "max_tokens": args.max_tokens, "base_url": args.base_url,
-                        "prompt_mode": args.prompt_mode, "think_mode": env["THINK_MODE"],
-                        "enable_thinking": env.get("ENABLE_THINKING", "auto")}
+                        "prompt_mode": args.prompt_mode, "think_mode": args.thinking == "on",
+                        "model_thinking": args.model_thinking, "thinking_transport": args.thinking_transport,
+                        "evaluation_profile": args.evaluation_profile, "image_encoding": args.image_encoding,
+                        "api_timeout": args.api_timeout, **execution_settings(args)}
+        run_settings['num_workers'] = args.num_workers
         if args.task == "single-point" and args.backend == "openai":
             run_settings["prompt_revision"] = "text-subtitles-v1"
         run_manifest = args.output_dir / "run_manifest.json"

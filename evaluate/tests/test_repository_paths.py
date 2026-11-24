@@ -67,7 +67,7 @@ def test_missing_file_does_not_switch_subsets(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc:
         cli.main(['validate', '--task', 'single-point', '--drama', 'sample', '--subset', 'Bench_Data'])
     assert exc.value.code == 2
-    assert 'Bench_Data/sample.json' in capsys.readouterr().err
+    assert 'Bench_Data/sample.json' in capsys.readouterr().err.replace('\\', '/')
 
 
 def test_installed_client_without_data_has_actionable_error(tmp_path, monkeypatch, capsys):

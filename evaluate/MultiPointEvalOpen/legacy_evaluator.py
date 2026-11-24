@@ -343,10 +343,12 @@ class MultiPointEvaluator:
                  num_workers=2, tpm_limit=0, max_tokens=4000,
                  max_retries=6, api_timeout=120.0, limit=0,
                  keys_file='', input_fingerprints=None, reasoning_effort=None,
-                 evaluation_profile='local-qwen', model_thinking='off', image_encoding='png', thinking_transport='chat-template'):
+                 evaluation_profile='local-qwen', model_thinking='off', image_encoding='png', thinking_transport='chat-template', temperature=0.1, top_p=0.01):
         from .pool_config import load_profile
         self.pool_profile = load_profile(evaluation_profile)
         self.pool_profile['thinking_transport'] = thinking_transport
+        self.pool_profile['temperature'] = temperature
+        self.pool_profile['top_p'] = top_p
         self.model_thinking = model_thinking
         self.image_encoding = image_encoding
         self.model = model
@@ -383,6 +385,7 @@ class MultiPointEvaluator:
             http_client=DefaultHttpxClient(verify=self.input_fingerprints is not None),
             timeout=self._api_timeout,
             max_retries=0,
+            organization='', project='',
         )
 
     # ------------------------------------------------------------------
@@ -437,6 +440,8 @@ class MultiPointEvaluator:
         self.budget.acquire(estimate_tokens(n_images, chars, self.max_tokens))
         from .pool_config import request_kwargs
         kwargs = request_kwargs(self.pool_profile, self.model, messages, self.max_tokens, self.model_thinking)
+        if self.reasoning_effort is not None:
+            kwargs['reasoning_effort'] = self.reasoning_effort
         for attempt in range(self.max_retries):
             if self._routed_block.is_set():
                 return None, 0, 'provider_blocked'
@@ -755,7 +760,7 @@ def parse_args():
     p.add_argument('--base-url',    required=True,
                    help='OpenAI-compatible API base URL.')
     p.add_argument('--api-key',     default='',
-                   help='API key; prefer OPENAI_API_KEY to keep credentials out of process arguments.')
+                   help='API key; use --keys-file to avoid placing it in process arguments.')
     p.add_argument('--keys-file',   default='',
                    help='File containing one API key per line; mutually exclusive with --api-key.')
     p.add_argument('--model',       required=True,

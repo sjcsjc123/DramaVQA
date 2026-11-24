@@ -79,6 +79,7 @@ def test_all_rejects_single_json_and_empty_collection(tmp_path):
 
 @pytest.mark.parametrize('task', ['single-point', 'multi-point', 'multi-hop'])
 def test_all_dramas_isolated_video_to_http_pipeline(tmp_path, task):
+    pytest.importorskip('openai')
     if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
         pytest.skip('FFmpeg and ffprobe required')
     group = {'single-point': 'Bench_Data_mini_2000', 'multi-point': 'Multi-Point',

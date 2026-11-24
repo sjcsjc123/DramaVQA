@@ -50,9 +50,10 @@ def command(args: argparse.Namespace, qa_path: Path) -> list[str]:
         "--sample_frames", str(args.sample_frames),
         "--target_width", str(args.target_width),
         "--level", "L3", "--model_name", "frame-preparation",
-        "--serving_mode", "local", "--only_gen_img",
+        "--only_gen_img",
         "--use_render_info",
     ]
+    cmd.extend(['--decode-threads', str(args.decode_threads)])
     return cmd
 
 
@@ -65,13 +66,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--sample-frames", type=int, default=256)
     parser.add_argument("--target-width", type=int, default=392)
+    parser.add_argument("--decode-threads", type=int, default=2)
     parser.add_argument("--limit-questions", type=int, default=0)
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--prepare-only", action="store_true", help="write frame QA without extracting")
     args = parser.parse_args(argv)
-    if args.sample_frames < 1 or args.target_width < 1 or args.limit_questions < 0:
-        parser.error("sample-frames and target-width must be positive; limit nonnegative")
+    if min(args.sample_frames, args.target_width, args.decode_threads) < 1 or args.limit_questions < 0:
+        parser.error("sample-frames, target-width and decode-threads must be positive; limit nonnegative")
     loader = load_multi_point if args.kind == "multi_point" else load_multi_hop
     adapted, summary = loader(args.qa, drama=args.drama)
     questions = [item for group in adapted.values() for item in group.values()]
@@ -94,7 +96,8 @@ def main(argv: list[str] | None = None) -> int:
     qa_path.write_text(json.dumps(clips, ensure_ascii=False, indent=2), encoding="utf-8")
     if args.prepare_only:
         return 0
-    return subprocess.run(cmd, check=False).returncode
+    from dramavqa.runtime import child_environment
+    return subprocess.run(cmd, env=child_environment(), check=False).returncode
 
 
 if __name__ == "__main__":

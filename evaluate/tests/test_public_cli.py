@@ -108,7 +108,7 @@ def test_all_shipped_python_sources_compile():
     root = Path(__file__).parents[1]
     for package in ("dramavqa", "SinglePointEvalOpen", "MultiPointEvalOpen", "MultiHopEvalOpen"):
         for path in (root / package).glob("*.py"):
-            compile(path.read_text(), str(path), "exec")
+            compile(path.read_text(encoding='utf-8'), str(path), "exec")
 
 
 def test_seasonal_frame_directory_names(tmp_path):
@@ -130,21 +130,22 @@ def test_public_image_directory_wins_over_legacy_alias(tmp_path):
 def test_thinking_is_explicit_and_prevents_mixed_resume(tmp_path, monkeypatch):
     calls = []
     def run(command, **kwargs):
-        calls.append((kwargs["env"]["SYS_PROMPT_MODE"], kwargs["env"]["THINK_MODE"]))
+        assert 'SYS_PROMPT_MODE' not in kwargs['env'] and 'THINK_MODE' not in kwargs['env']
+        calls.append(command[command.index('--thinking') + 1])
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr("dramavqa.cli.subprocess.run", run)
     monkeypatch.setenv("SYS_PROMPT_MODE", "strict")
     args = ["run", "--task", "single-point", "--qa", str(FIXTURE), "--drama", "sample",
             "--output-dir", str(tmp_path), "--model", "fixture", "--thinking", "on"]
     main(args)
-    assert calls == [("full", "1")]
+    assert calls == ['on']
     metadata = json.loads((tmp_path / "run_manifest.json").read_text())
-    assert metadata["prompt_mode"] == "full" and metadata["think_mode"] == "1"
+    assert metadata["prompt_mode"] == "full" and metadata["think_mode"] is True
     with pytest.raises(SystemExit):
         main(args[:-1] + ["off"])
     monkeypatch.setenv("ENABLE_THINKING", "off")
-    with pytest.raises(SystemExit):
-        main(args)
+    main(args)
+    assert calls == ['on', 'on']
 
 
 @pytest.mark.parametrize("mode", ["none", "no-example", "no_example", "strict"])
@@ -161,13 +162,12 @@ def test_removed_prompt_modes_are_rejected(mode):
 def test_full_prompt_variants(module_name, thinking, group, monkeypatch):
     import importlib
     module = importlib.import_module(module_name)
-    monkeypatch.setattr(module, "THINK_MODE", thinking)
     content = module.GROUP_MESSAGE_SYSTEM if group else module.MESSAGE_SYSTEM
     expected = module._think_prompt() if thinking else (
         (module._group_message_system_head() if group else module._message_system_head())
         + module.MESSAGE_SYSTEM_FORMAT
         + (module.GROUP_MESSAGE_SYSTEM_EXAMPLE if group else module.MESSAGE_SYSTEM_EXAMPLE))
-    assert module.resolve_system_content(content) == expected
+    assert module.resolve_system_content(content, thinking=thinking) == expected
     assert module.SYS_PROMPT_MODE == "full"
     assert not hasattr(module, "_strict_prompt")
 

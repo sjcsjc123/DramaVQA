@@ -37,6 +37,7 @@ def test_l6_is_preserved_and_checked_before_running(tmp_path, capsys):
 
 @pytest.mark.parametrize('level', ['L3', 'L4', 'L5', 'L6'])
 def test_public_video_to_ten_answers_from_face_video(tmp_path, level):
+    pytest.importorskip('openai')
     if not shutil.which('ffmpeg') or not shutil.which('ffprobe'):
         pytest.skip('FFmpeg and ffprobe required')
     drama = 'breaking_bad'

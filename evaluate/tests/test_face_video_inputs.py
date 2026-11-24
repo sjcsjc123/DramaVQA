@@ -49,7 +49,8 @@ def test_generated_commands_do_not_pass_removed_switch(task):
     if task != 'single-point':
         nested = prepare_frames.command(prepare_frames.argparse.Namespace(
             python='python', drama='sample', video_root=Path('media'),
-            output_root=Path('out'), sample_frames=256, target_width=392), Path('qa.json'))
+            output_root=Path('out'), sample_frames=256, target_width=392,
+            decode_threads=2), Path('qa.json'))
         assert not set(REMOVED_FLAGS) & set(nested)
 
 
@@ -60,7 +61,7 @@ def test_raw_video_alone_is_not_an_input_fallback(tmp_path):
     (raw / '0001.mp4').write_bytes(b'not a face video')
     with pytest.raises(FileNotFoundError, match='Required face video directory not found'):
         sampler.main(['--drama', 'sample', '--question_path', str(tmp_path / 'qa.json'),
-            '--model_name', 'fixture', '--serving_mode', 'local', '--only_gen_img',
+            '--model_name', 'fixture', '--only_gen_img',
             '--video_path', str(tmp_path / 'media'), '--image_path', str(tmp_path / 'out')])
 
 

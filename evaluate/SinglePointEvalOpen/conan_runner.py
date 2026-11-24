@@ -80,7 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("QA contains no questions")
     qa_dir = args.output_root / "inputs" / "conan_qa"
     output_file = args.output_root / args.level / str(args.sample_frames) / "qa_data" / args.drama / "conan" / "q_a_dict.json"
-    env = os.environ.copy()
+    from dramavqa.runtime import child_environment
+    env = child_environment()
     env.update({
         "CONAN_USE_DRAMA_QA": "1", "CONAN_QUESTIONS_DIR": str(qa_dir.resolve()),
         "CONAN_IMAGE_ROOT": str(args.image_root.resolve()),

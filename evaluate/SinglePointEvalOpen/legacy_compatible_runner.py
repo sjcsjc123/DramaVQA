@@ -1,4 +1,3 @@
-import io
 import gc
 import re
 import os
@@ -9,7 +8,6 @@ import time
 import json
 import random
 import hashlib
-import base64
 import datetime
 import argparse
 import threading
@@ -48,6 +46,7 @@ except ImportError:
         """
         def __init__(self, path, ctx=None, num_threads=1):
             self.path = path
+            self.num_threads = num_threads
             try:
                 probe = subprocess.check_output(
                     ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
@@ -91,7 +90,8 @@ except ImportError:
             for index in indices:
                 timestamp = max(0.0, float(index) / self.fps)
                 raw = subprocess.check_output(
-                    ['ffmpeg', '-v', 'error', '-ss', f'{timestamp:.6f}', '-i', self.path,
+                    ['ffmpeg', '-v', 'error', '-threads', str(self.num_threads),
+                     '-ss', f'{timestamp:.6f}', '-i', self.path, '-threads', str(self.num_threads),
                      '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'mjpeg', 'pipe:1'],
                     stderr=subprocess.STDOUT,
                     timeout=120,
@@ -112,13 +112,12 @@ except ImportError:
 # thousands, leading to a load saturation but no actual output (long clips with large
 # seek ranges will stall for tens of minutes). In practice, limiting the clip to a
 # single thread reduces processing time to 42 seconds, thus converging the thread count.
-DECORD_NUM_THREADS = int(os.environ.get('DECORD_NUM_THREADS', '2'))
 from collections import defaultdict
 from PIL import Image
 
 
 try:
-    from openai import OpenAI, DefaultHttpxClient
+    from openai import OpenAI
 except ImportError:
     class _MissingOpenAI:
         def __init__(self, *args, **kwargs):
@@ -126,7 +125,6 @@ except ImportError:
         def __getattr__(self, name):
             raise RuntimeError('install the optional `openai` package for model evaluation')
     OpenAI = _MissingOpenAI
-    DefaultHttpxClient = lambda **kwargs: None
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # gemini-related dependencies are optional: missing them does not affect the vllm/openai
@@ -139,23 +137,8 @@ except Exception:
     types = None
 
 
-BASE_URL = os.environ.get("OPENAI_BASE_URL", "http://localhost:8000/v1")
-API_KEY = os.environ.get("OPENAI_API_KEY", "EMPTY")
 
 EPISODES_PER_SEASON = 365
-
-
-# Short names with provider-specific API IDs. Checkpoint paths and private
-# deployment IDs are intentionally not embedded in this distributable package.
-# For any other API model, supply --model_path or API_MODEL_ID at run time.
-MODEL_CKPT_MAP = {
-    "gpt-5": "gpt-5",
-    "gpt-4.1": "gpt-4.1",
-    "gpt-4o": "gpt-4o",
-    "gemini-2.5-pro": "gemini-2.5-pro",
-    "gemini-3-pro": "gemini-3-pro-preview",
-    "gemini-3.1-pro": "gemini-3.1-pro-preview",
-}
 
 
 DRAMA_CAP_MAP = {
@@ -227,7 +210,7 @@ F. Purple
 Answer: <letter>"""
 
 # use model with thinking: allows reasoning, but must end with fixed format for
-# consistent regex extraction. Enable with THINK_MODE=1.
+# consistent regex extraction. Selected explicitly by --thinking on.
 def _think_prompt():
     return (SUBTITLE_DESCRIPTION +
             "\nPlease perform a detailed reasoning based on the provided video frames to answer "
@@ -237,17 +220,16 @@ def _think_prompt():
 
 THINK_PROMPT = _think_prompt()
 
-THINK_MODE = os.environ.get("THINK_MODE", "0").strip().lower() in ("1", "true", "yes")
 
 MESSAGE_SYSTEM = MESSAGE_SYSTEM_HEAD + MESSAGE_SYSTEM_FORMAT + MESSAGE_SYSTEM_EXAMPLE
 
-# Only the full prompt is supported; THINK_MODE selects its reasoning variant.
+# Only the full prompt is supported; --thinking selects its reasoning variant.
 SYS_PROMPT_MODE = "full"
 
 
-def resolve_system_content(system_content):
+def resolve_system_content(system_content, *, thinking=False):
     """Resolve the full or thinking prompt with fixed text-subtitle instructions."""
-    if THINK_MODE:
+    if thinking:
         return _think_prompt()
     is_group = system_content == GROUP_MESSAGE_SYSTEM
     head = _group_message_system_head() if is_group else _message_system_head()
@@ -289,10 +271,10 @@ class NoVideoAvailable(Exception):
 # answered, permanently marked as incorrect. Real-world measurements show
 # completion_tokens median values differ by two orders of magnitude across models
 # (Instruct 2 / 8B-thinking 82 / 32B-thinking 890 / 3.5-27B 2046), so must be set
-# model-specific, hence configured via environment variables. Be careful not to increase
+# model-specific, hence configured via --max-tokens. Be careful not to increase
 # too much: the backend has ~120s gateway timeout, larger quotas result in longer
 # generation times and higher risk of exceeding the timeout.
-API_MAX_TOKENS = int(os.environ.get('API_MAX_TOKENS', '1000'))
+API_MAX_TOKENS = 1000
 
 
 class _TokenBudget:
@@ -332,11 +314,7 @@ class _TokenBudget:
             time.sleep(min(wait, 30) + random.uniform(0, 0.5))
 
 
-_TPM_LIMIT = int(os.environ.get('API_TPM_LIMIT', '0'))
-_token_budget = _TokenBudget(_TPM_LIMIT) if _TPM_LIMIT > 0 else None
-
-
-def _estimate_tokens(msg):
+def _estimate_tokens(msg, max_tokens=1000):
     """Estimate token count for a single request to be used in token bucket allocation.
     Image estimation: 392x392 frame ≈ 85 tokens per frame (measured: 256-frame requests
     total 22,035 tokens, including text ≈ 700, so (22,035 - 700)/256 ≈ 83). Text
@@ -357,7 +335,7 @@ def _estimate_tokens(msg):
                     chars += len(part.get('text', ''))
     # Output buffer reserve: must match the actual max_tokens value; otherwise, the rate
     # limiter will underestimate the request cost.
-    return imgs * 85 + chars // 4 + API_MAX_TOKENS
+    return imgs * 85 + chars // 4 + max_tokens
 
 
 def atomic_dump_json(obj, path, indent=4):
@@ -385,18 +363,17 @@ def atomic_dump_json(obj, path, indent=4):
         raise
 
 
-def is_item_done(qa):
+def is_item_done(qa, *, retry_guessed=True):
     """Return whether a question has a final result. In baseline mode, a model response
     with unextractable formatting counts as completed and wrong; an invalid option in
     accelerated mode can be retried. A missing video or image marked with skip_reason
     must be retried after data arrives. A guessed answer is incomplete and is retried by
-    default; SKIP_RETRY_GUESSED=1 disables that retry."""
+    default; --no-retry-guessed disables that retry."""
     if 'result' not in qa:
         return False
     if qa.get('skip_reason'):
         return False
-    # guessed default re-run; set SKIP_RETRY_GUESSED=1 to skip
-    if qa.get('guessed') and os.environ.get('SKIP_RETRY_GUESSED') != '1':
+    if qa.get('guessed') and retry_guessed:
         return False
     if qa.get('generation_policy', 'baseline') != 'baseline':
         answer = qa.get('result')
@@ -523,55 +500,11 @@ class LLMInference:
         return any('glm53' in re.sub(r'[^a-z0-9]', '', name.lower()) for name in names)
 
     def _resolve_reasoning_effort(self):
-        if not self._is_glm53():
-            return None
-        effort = os.environ.get('GLM53_REASONING_EFFORT', 'max').strip().lower()
-        if effort not in ('low', 'high', 'max'):
-            raise ValueError('GLM53_REASONING_EFFORT must be low, high, or max')
-        return effort
+        return self.requested_reasoning_effort
 
     def _resolve_enable_thinking(self):
-        """Resolve the thinking switch; None means omit enable_thinking. GLM-5.3-Flash uses
-        reasoning_effort, so off cannot silently be treated as a valid no-thinking
-        experiment. GLM-4.x retains enable_thinking, while Qwen Thinking weights omit
-        the switch in auto mode."""
-        mode = getattr(self, 'enable_thinking_mode', 'auto')
-        if self._is_glm53():
-            if mode == 'off':
-                raise ValueError(
-                    'GLM-5.3-Flash native template does not support enable_thinking=off; '
-                    'use auto/on with GLM53_REASONING_EFFORT=low/high/max. '
-                    'A low reasoning budget is not a nothink evaluation.'
-                )
-            return None
-        if mode == 'on':
-            return True
-        if mode == 'off':
-            return False
-
-        name = (self.short_model_name or '').lower()
-        model_id = (self.model_name or '').lower()
-        blob = name + ' ' + model_id
-
-        # Qwen's thinking is independent of weights, not controlled by parameter
-        # switches, and not sent to avoid interference
-        if 'qwen' in blob and 'thinking' in blob:
-            return None
-        # Qwen3-VL Instruct (multimodal vision) has independent weights, does not think
-        # inherently, and siliconflow endpoint does not accept enable_thinking parameter
-        # — sending it results in 400
-        # （current model does not support parameter enable_thinking）。
-        # Can only be left un-sent, maintaining original behavior
-        if 'qwen' in blob and 'vl' in blob:
-            return None
-        # GLM-4.x uses same weights for dual mode, default thinking is disabled; GLM-5.3
-        # has been handled separately above
-        if 'glm' in blob:
-            return False
-        # Other models (e.g., Qwen3.5/3.6-27B in plain text) follow historical behavior:
-        # explicitly disable thinking, which has been tested to clear reasoning_content
-        # and significantly reduce token usage.
-        return False
+        mode = self.enable_thinking_mode
+        return None if mode == 'omit' else mode == 'on'
 
     def __init__(self, args):
         self.port = args.port
@@ -601,8 +534,8 @@ class LLMInference:
         # When using local vLLM service, the model name in the request must be the name
         # registered in the server --served-model-name, not the weight path (otherwise a
         # 404 error occurs as the model does not exist).
-        # API aliases use MODEL_CKPT_MAP; local vLLM uses the served model ID.
-        self.model_name = MODEL_CKPT_MAP.get(args.model_name, args.model_name)
+        # The request uses the explicitly supplied served model ID.
+        self.model_name = args.model_name
         if args.model_path != "":
             self.model_name = args.model_path
         self.question_path = args.question_path
@@ -611,60 +544,32 @@ class LLMInference:
         self.video_paths = [os.path.join(args.video_path, drama_)
                             for drama_ in DRAMA_NAME_MAP.get(self.drama, [self.drama])]
 
-        # thinking switch: parsed to the final value to be sent; None indicates not
-        # sending this field. Must distinguish between "sending False" and "not
-        # sending": - For GLM-4.x, think behavior is controlled by enable_thinking; for
-        # GLM-5.3, only reasoning_effort is used; - For Qwen3-VL, Instruct and Thinking
-        # use separate weights; sending an unrecognized chat_template_kwargs may be
-        # ignored, and worse, setting False for *-Thinking weights may suppress thinking
-        # output. Therefore, in auto mode, Qwen-Thinking is never sent, preserving the
-        # original weight behavior.
-        self.enable_thinking_mode = getattr(args, 'enable_thinking', 'auto')
+        self.think_mode = args.thinking == 'on'
+        self.enable_thinking_mode = args.enable_thinking
+        self.requested_reasoning_effort = args.reasoning_effort
         self.enable_thinking = self._resolve_enable_thinking()
         self.reasoning_effort = self._resolve_reasoning_effort()
-
+        self.thinking_transport = args.thinking_transport
         self.use_render_info = args.use_render_info
         self.parallel = args.parallel
         self.num_workers = args.num_workers
-        self.max_output_tokens = API_MAX_TOKENS
-        self.thinking_token_budget = None
-        self.generation_policy = 'baseline'
-        self.guess_after_failed_retries = None
-        # Optional run-local policy; no changes for other launchers by default.
-        policy_path = os.environ.get('EVAL_CLIENT_CONFIG')
-        if not policy_path and os.environ.get('EVAL_LOG_DIR'):
-            candidate = Path(os.environ['EVAL_LOG_DIR']) / 'client_config.json'
-            if candidate.is_file():
-                policy_path = str(candidate)
-        if policy_path:
-            policy = json.loads(Path(policy_path).read_text())
-            if not self._is_glm53():
-                raise ValueError('Run-local generation policy requires GLM53')
-            if policy.get('run_tag') != os.environ.get('RUN_TAG'):
-                raise ValueError('Generation policy run_tag mismatch')
-            workers = policy['num_workers']
-            output_tokens = policy['max_tokens']
-            thinking_tokens = policy['thinking_token_budget']
-            if (type(workers) is not int or not 1 <= workers <= 64
-                    or type(output_tokens) is not int or not 1 <= output_tokens <= 32768
-                    or (thinking_tokens is not None and
-                        (type(thinking_tokens) is not int
-                         or not 0 < thinking_tokens <= output_tokens - 256))):
-                raise ValueError('Invalid run-local generation policy limits')
-            self.num_workers = workers
-            self.max_output_tokens = output_tokens
-            self.thinking_token_budget = thinking_tokens
-            self.generation_policy = policy['policy_id']
-            if 'reasoning_effort' in policy:
-                if policy['reasoning_effort'] not in ('low', 'high', 'max'):
-                    raise ValueError('Invalid reasoning_effort policy')
-                self.reasoning_effort = policy['reasoning_effort']
-            guess_after = policy.get('guess_after_failed_retries')
-            if guess_after is not None:
-                if type(guess_after) is not int or guess_after < 1:
-                    raise ValueError('Invalid guess_after_failed_retries')
-                self.guess_after_failed_retries = guess_after
-            print('[generation-policy]', json.dumps(policy, ensure_ascii=False), flush=True)
+        self.max_output_tokens = args.max_tokens
+        self.max_retries = args.max_retries
+        self.api_timeout = args.api_timeout
+        self.decode_threads = args.decode_threads
+        self.temperature = args.temperature
+        self.top_p = args.top_p
+        self.token_budget = _TokenBudget(args.tpm_limit) if args.tpm_limit else None
+        self.tpm_limit = args.tpm_limit
+        self.thinking_token_budget = args.thinking_token_budget
+        self.generation_policy = args.generation_policy
+        self.guess_after_failed_retries = args.guess_after_failed_retries
+        self.retry_guessed = args.retry_guessed
+        self.restrict_to_question_set = args.restrict_to_question_set
+        self.run_tag = args.run_tag
+        self.evaluation_profile = args.evaluation_profile
+        self.alignment_factor = {'local-qwen': 32, 'local-glm': 28}[args.evaluation_profile]
+        self.image_encoding = args.image_encoding
         resolution_dict = {
             'low': 'media_resolution_low',
             'medium': 'media_resolution_medium',
@@ -716,92 +621,10 @@ class LLMInference:
             },
         }
 
-        # Service source (local=local deployment using vLLM / api=external API).
-        #
-        # No longer rely on substring matching of model name: qwen3-32b uses "qwen" in
-        # its name and would be incorrectly identified as a local deployment, leading to
-        # connection to localhost. Therefore, explicitly specify the serving mode via
-        # --serving_mode or SERVING_MODE, falling back to old name inference only when
-        # not specified.
-        serving_mode = (getattr(args, 'serving_mode', '')
-                        or os.environ.get('SERVING_MODE', '')).strip().lower()
-        if serving_mode not in ('local', 'api'):
-            looks_local = ('qwen' in self.short_model_name
-                           or 'glm' in self.short_model_name
-                           or 'intern' in self.short_model_name)
-            serving_mode = 'local' if looks_local else 'api'
-        self.serving_mode = serving_mode
-
-        if self.serving_mode == 'local':
-            # The local request name must match vLLM's --served-model-name.
-            self.model_name = (os.environ.get('VLLM_SERVED_MODEL_NAME')
-                               or args.model_path or self.short_model_name)
-
-        if self.serving_mode == 'local':
-            local_client_options = {}
-            if os.environ.get('LOCAL_API_MAX_RETRIES') is not None:
-                local_client_options['max_retries'] = int(os.environ['LOCAL_API_MAX_RETRIES'])
-            if os.environ.get('LOCAL_API_TIMEOUT'):
-                local_timeout = float(os.environ['LOCAL_API_TIMEOUT'])
-                if not 0 < local_timeout <= 86400:
-                    raise ValueError('LOCAL_API_TIMEOUT must be within (0, 86400]')
-                local_client_options.update(timeout=local_timeout, max_retries=0)
-            self.client = OpenAI(
-                base_url=os.environ.get("OPENAI_BASE_URL") or "http://localhost:{}/v1".format(self.port),
-                api_key=os.environ.get("OPENAI_API_KEY", "EMPTY"), **local_client_options)
-        elif os.environ.get('API_BASE_URL'):
-            # External API: Address and key are obtained from environment variables to
-            # avoid hardcoding keys in code or command line (which would be logged into
-            # platform logs). API_MODEL_ID is used to map short names to the actual
-            # model ID of the service provider.
-            api_key = os.environ.get('API_KEY') or API_KEY
-            # Single request timeout: Some endpoints (e.g., GLM/Qwen *-Thinking) may
-            # take a long time to respond for individual requests, causing the worker to
-            # block indefinitely on a futex (tested to hang for 30 minutes without
-            # response). Setting a timeout prevents such hung requests from causing the
-            # entire shard to stall. Timeout-logged requests are caught by
-            # APITimeoutError and proceed to retry logic; if retries fail, the task is
-            # skipped and the worker continues.
-            api_timeout = float(os.environ.get('API_TIMEOUT', '120'))
-            self.client = OpenAI(
-                api_key=api_key,
-                base_url=os.environ['API_BASE_URL'],
-                http_client=DefaultHttpxClient(),
-                timeout=api_timeout,
-                max_retries=0,
-            )
-            env_model_id = os.environ.get('API_MODEL_ID')
-            if env_model_id:
-                # --model_name determines the output directory name, while API_MODEL_ID
-                # specifies which actual model is used for the request. When these two
-                # do not match, results are written to the directory named A but the
-                # content comes from B, and all directory, short_name, and log entries
-                # show A, only run_meta matches correctly—making it extremely hard to
-                # detect. When the caller omits API_MODEL_ID during multi-model parallel
-                # execution, this leads to all models running the default model in
-                # .api_env (e.g., 6 models all run the default model). It's safer to
-                # reject such runs outright.
-                if (self.model_name and env_model_id != self.model_name
-                        and os.environ.get('ALLOW_MODEL_ID_MISMATCH') != '1'):
-                    raise SystemExit(
-                        f"ERROR: --model_name ({self.model_name}) does not match "
-                        f"API_MODEL_ID ({env_model_id}).\n"
-                        f"  Results would be saved under {self.model_name} while requests use "
-                        f"{env_model_id}; this would misattribute results.\n"
-                        f"  Set ALLOW_MODEL_ID_MISMATCH=1 to bypass this check if intentional."
-                    )
-                self.model_name = env_model_id
-        # elif 'gemini' in self.short_model_name:
-        #     self.client = genai.Client(
-        #         api_key=API_KEY,
-        #         http_options={'api_version': 'v1alpha'})
-        else:
-            self.client = OpenAI(
-                api_key=API_KEY,
-                base_url=BASE_URL,
-                http_client=DefaultHttpxClient()
-            )
-
+        self.base_url = args.base_url
+        self.api_key = os.environ.get('OPENAI_API_KEY', 'EMPTY')
+        self.client = OpenAI(base_url=self.base_url, api_key=self.api_key,
+                             timeout=self.api_timeout, max_retries=0, organization='', project='')
         self.episode_info = {}
         self.skipped_videos = []
         self.skipped_clips = []
@@ -829,7 +652,7 @@ class LLMInference:
                         # that episode; otherwise, a corrupted file causes the entire
                         # task to crash during initialization.
                         try:
-                            vr = VideoReader(video_i_path, ctx=cpu(0), num_threads=DECORD_NUM_THREADS)
+                            vr = VideoReader(video_i_path, ctx=cpu(0), num_threads=getattr(self, 'decode_threads', 2))
                             fps = vr.get_avg_fps()
                             total_frames = len(vr)
                         except Exception as e:
@@ -928,7 +751,7 @@ class LLMInference:
         # sleep was insufficient: rate limiting windows are typically measured in
         # minutes, and two rapid retries will both fail, resulting in 61% of questions
         # returning empty results.
-        retries = int(os.environ.get('API_MAX_RETRIES', '6'))
+        retries = getattr(self, 'max_retries', 6)
         version = self.model_name
         # Filter out system messages with empty content.
         send_msg = [m for m in msg if not (m.get("role") == "system" and not m.get("content"))]
@@ -937,47 +760,32 @@ class LLMInference:
                 current_sys_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 print(current_sys_time, self.drama, self.sample_frames, self.level, version, top_p, temperature)
 
-                # Apply TPM quota pacing (only effective if API_TPM_LIMIT is set). Place
+                # Apply the explicitly configured TPM quota. Place
                 # inside try block, immediately after actual sending, to ensure retries
                 # re-request quota.
-                if _token_budget is not None:
-                    _token_budget.acquire(_estimate_tokens(send_msg))
+                if getattr(self, 'token_budget', None) is not None:
+                    self.token_budget.acquire(_estimate_tokens(send_msg, self.max_output_tokens))
 
                 # When enable_thinking is None, do not send this field (e.g., Qwen
                 # *-Thinking has independent weight), otherwise pass extra_body to the
                 # server.
                 create_kwargs = dict(
                     model=version,
-                    temperature=temperature,
-                    top_p=top_p,
+                    temperature=getattr(self, 'temperature', temperature),
+                    top_p=getattr(self, 'top_p', top_p),
                     messages=send_msg,
                     max_tokens=getattr(self, 'max_output_tokens', API_MAX_TOKENS),
                 )
                 if getattr(self, 'reasoning_effort', None) is not None:
                     create_kwargs['reasoning_effort'] = self.reasoning_effort
                 if self.enable_thinking is not None:
-                    # The enable_thinking switch is distributed on two different chains:
-                    # local vLLM (OpenAI-compatible layer) only recognizes
-                    # extra_body.chat_template_kwargs.enable_thinking, while the
-                    # top-level enable_thinking is discarded as unknown (log "fields ...
-                    # ignored: {'enable_thinking'}"), making GLM thinking effectively
-                    # useless. GLM defaults to enabling thinking, so setting
-                    # enable_thinking=False disables it. For external APIs
-                    # (siliconflow), Qwen3.5/3.6-27B has been tested to recognize the
-                    # top-level enable_thinking, and setting it to False clears
-                    # reasoning_content and sets completion_tokens=3. Therefore, local
-                    # use chat_template_kwargs, while external APIs use the top-level
-                    # enable_thinking.
-                    if self.serving_mode == 'local':
-                        create_kwargs['extra_body'] = {
-                            "chat_template_kwargs": {
-                                "enable_thinking": self.enable_thinking
-                            }
-                        }
+                    transport = self.thinking_transport
+                    if transport == 'chat-template':
+                        create_kwargs['extra_body'] = {'chat_template_kwargs': {'enable_thinking': self.enable_thinking}}
+                    elif transport == 'enable_thinking':
+                        create_kwargs['extra_body'] = {'enable_thinking': self.enable_thinking}
                     else:
-                        create_kwargs['extra_body'] = {
-                            "enable_thinking": self.enable_thinking
-                        }
+                        create_kwargs['extra_body'] = {'thinking': {'type': 'enabled' if self.enable_thinking else 'disabled'}}
                 thinking_budget = getattr(self, 'thinking_token_budget', None)
                 if thinking_budget is not None:
                     create_kwargs.setdefault('extra_body', {})['thinking_token_budget'] = thinking_budget
@@ -1077,12 +885,12 @@ class LLMInference:
                 # of quota as the internal set is already full and progress remains
                 # unchanged.
                 #
-                # After RESTRICT_TO_QUESTION_SET=1, trim questions by current question
+                # With --restrict-to-question-set, trim questions by current question
                 # bank: remove out-of-bank questions from the list of questions to run,
                 # and only process incomplete questions within the bank. Only trim in
                 # memory, not save to disk; out-of-bank answers remain in the file, and
                 # statistics are filtered by progress.py.
-                if os.environ.get('RESTRICT_TO_QUESTION_SET') == '1':
+                if self.restrict_to_question_set:
                     in_set = set()
                     for _lv, _qi in self.questions.items():
                         for _qk, _qb in _qi.items():
@@ -1107,7 +915,7 @@ class LLMInference:
                         q_a_dict = kept
 
                 for q_i, q_info in q_a_dict.items():
-                    if not is_item_done(q_info['Q&A']):
+                    if not is_item_done(q_info['Q&A'], retry_guessed=getattr(self, 'retry_guessed', True)):
                         is_completed = False
                         break
             return q_a_dict, is_completed
@@ -1177,12 +985,12 @@ class LLMInference:
         meta = {
             'run_time': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'sys_prompt_mode': SYS_PROMPT_MODE,
-            'run_tag': os.environ.get('RUN_TAG', ''),
-            'think_mode': THINK_MODE,
-            # thinking switch: mode is a parameter (auto/on/off), sent is the actual
+            'run_tag': getattr(self, 'run_tag', ''),
+            'think_mode': getattr(self, 'think_mode', False),
+            # thinking switch: mode is a parameter (omit/on/off), sent is the actual
             # sent value, sent=None means the chat_template_kwargs were not included in
             # the request.
-            'enable_thinking_mode': getattr(self, 'enable_thinking_mode', 'auto'),
+            'enable_thinking_mode': self.enable_thinking_mode,
             'enable_thinking_sent': getattr(self, 'enable_thinking', None),
             'reasoning_effort_sent': getattr(self, 'reasoning_effort', None),
             'native_thinking_required': self._is_glm53(),
@@ -1194,8 +1002,20 @@ class LLMInference:
             'model_name_requested': self.model_name,
             'model_short_name': self.short_model_name,
             'port': self.port,
-            'top_p': 0.01,
-            'temperature': 0.1,
+            'top_p': self.top_p,
+            'temperature': self.temperature,
+            'base_url': self.base_url,
+            'max_retries': self.max_retries,
+            'api_timeout': self.api_timeout,
+            'tpm_limit': self.tpm_limit,
+            'decode_threads': self.decode_threads,
+            'retry_guessed': self.retry_guessed,
+            'restrict_to_question_set': self.restrict_to_question_set,
+            'thinking_transport': self.thinking_transport,
+            'evaluation_profile': self.evaluation_profile,
+            'image_encoding': self.image_encoding,
+            'guess_after_failed_retries': self.guess_after_failed_retries,
+            'parallel': self.parallel,
             'max_tokens': getattr(self, 'max_output_tokens', API_MAX_TOKENS),
             'thinking_token_budget': getattr(self, 'thinking_token_budget', None),
             'generation_policy': getattr(self, 'generation_policy', 'baseline'),
@@ -1225,18 +1045,13 @@ class LLMInference:
             ],
             'raw_response_log': os.path.join(qa_path, 'raw_responses.jsonl'),
         }
-        try:
-            meta_path = Path(qa_path) / 'run_meta.json'
-            if meta_path.exists():
-                previous = json.loads(meta_path.read_text())
-                policy_fields = ('max_tokens', 'thinking_token_budget', 'generation_policy', 'num_workers')
-                if any(previous.get(k) != meta.get(k) for k in policy_fields):
-                    with (Path(qa_path) / 'run_meta_history.jsonl').open('a') as history:
-                        history.write(json.dumps(previous, ensure_ascii=False) + '\n')
-            atomic_dump_json(meta, os.path.join(qa_path, 'run_meta.json'))
-        except Exception as e:
-            # The metadata writing should not interrupt evaluation
-            print(f'[warn] run_meta.json write failed: {e}')
+        meta_path = Path(qa_path) / 'run_meta.json'
+        if meta_path.exists():
+            previous = json.loads(meta_path.read_text(encoding='utf-8'))
+            settings = lambda value: {k: v for k, v in value.items() if k != 'run_time'}
+            if settings(previous) != settings(meta):
+                raise ValueError('Evaluation settings changed; use a new result directory')
+        atomic_dump_json(meta, str(meta_path))
 
         # The original response and run_meta.json are in the same directory for easy
         # localization by experiment/scene/level
@@ -1286,7 +1101,7 @@ class LLMInference:
         if not os.path.exists(qa_path):
             os.makedirs(qa_path)
 
-        self.dump_run_meta(qa_path, resolve_system_content(MESSAGE_SYSTEM))
+        self.dump_run_meta(qa_path, resolve_system_content(MESSAGE_SYSTEM, thinking=getattr(self, 'think_mode', False)))
 
         dict_path = os.path.join(qa_path, 'q_a_dict.json')
         q_a_dict, is_completed = self.update_qa_dict(dict_path)
@@ -1298,7 +1113,7 @@ class LLMInference:
             q_a_dict = self.build_dict()
 
         for key, q_info in q_a_dict.items():
-            if is_item_done(q_info['Q&A']):
+            if is_item_done(q_info['Q&A'], retry_guessed=getattr(self, 'retry_guessed', True)):
                 continue
             time = q_info['time']
             time = self.get_level_time(time)
@@ -1349,7 +1164,7 @@ class LLMInference:
             sub_map = self.load_subtitle_map(image_file_path)
 
             msg = [
-                    {"role": "system", "content": resolve_system_content(MESSAGE_SYSTEM)},
+                    {"role": "system", "content": resolve_system_content(MESSAGE_SYSTEM, thinking=getattr(self, 'think_mode', False))},
                     {"role": "user", "content": [
                         {"type": "text", "text": prompt_template.format(Question=q_info['Q&A']['Question'],
                                                                         Options=q_info['Q&A']['Options'])}
@@ -1365,13 +1180,8 @@ class LLMInference:
             for idx in selected_indices:
                 frame = base64_frames[idx]
                 # Face annotations are already present; dialogue follows as text.
-                frame = self._align_pil_to_factor(frame)
-                buffered = io.BytesIO()
-                frame.save(buffered, format="PNG")
-                image_bytes = buffered.getvalue()
-                frame_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                msg[1]["content"].append(
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}})
+                from MultiPointEvalOpen.pool_config import image_part
+                msg[1]["content"].append(image_part(frame, self.alignment_factor, self.image_encoding))
                 # Send dialogue text immediately
                 # after the image, maintaining alignment between text and image.
                 if sub_map:
@@ -1423,6 +1233,10 @@ class LLMInference:
             q_a_dict[key]['Q&A']['guess_reason'] = None
             q_a_dict[key]['Q&A']['guess_from'] = None
             q_a_dict[key]['Q&A'].update(guess_info)
+            if self.generation_policy != 'baseline':
+                q_a_dict[key]['Q&A'].update(generation_policy=self.generation_policy,
+                    max_tokens=self.max_output_tokens, thinking_token_budget=self.thinking_token_budget,
+                    reasoning_effort=self.reasoning_effort)
 
             self.dump_qa_dict(q_a_dict, dict_path)
 
@@ -1568,7 +1382,7 @@ class LLMInference:
         if not os.path.exists(qa_path):
             os.makedirs(qa_path)
 
-        self.dump_run_meta(qa_path, resolve_system_content(MESSAGE_SYSTEM))
+        self.dump_run_meta(qa_path, resolve_system_content(MESSAGE_SYSTEM, thinking=getattr(self, 'think_mode', False)))
 
         dict_path = os.path.join(qa_path, 'q_a_dict.json')
         q_a_dict, is_completed = self.update_qa_dict(dict_path)
@@ -1604,7 +1418,7 @@ class LLMInference:
         return q_a_dict
 
     def process_item(self, key, q_info):
-        if is_item_done(q_info['Q&A']):
+        if is_item_done(q_info['Q&A'], retry_guessed=getattr(self, 'retry_guessed', True)):
             return key, None  # Return immediately with final result
 
         time = q_info['time']
@@ -1648,7 +1462,7 @@ class LLMInference:
         sub_map = self.load_subtitle_map(image_file_path)
 
         msg = [
-            {"role": "system", "content": resolve_system_content(MESSAGE_SYSTEM)},
+            {"role": "system", "content": resolve_system_content(MESSAGE_SYSTEM, thinking=getattr(self, 'think_mode', False))},
             {"role": "user", "content": [
                 {"type": "text", "text": prompt_template.format(Question=q_info['Q&A']['Question'],
                                                                 Options=q_info['Q&A']['Options'])}]},
@@ -1664,13 +1478,8 @@ class LLMInference:
             frame = base64_frames[idx]
 
             # Face annotations are already present; dialogue follows as text.
-            frame = self._align_pil_to_factor(frame)
-            buffered = io.BytesIO()
-            frame.save(buffered, format="PNG")
-            image_bytes = buffered.getvalue()
-            frame_base64 = base64.b64encode(image_bytes).decode('utf-8')
-            msg[1]["content"].append(
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}})
+            from MultiPointEvalOpen.pool_config import image_part
+            msg[1]["content"].append(image_part(frame, self.alignment_factor, self.image_encoding))
             # Send dialogue text immediately after
             # the image, maintaining alignment between text and image.
             if sub_map:
@@ -2120,7 +1929,7 @@ class LLMInference:
             print(f"[WARN] Video not found; skipping episode: {video_path}")
             return None, None
         try:
-            vr = VideoReader(video_path, ctx=cpu(0), num_threads=DECORD_NUM_THREADS)
+            vr = VideoReader(video_path, ctx=cpu(0), num_threads=getattr(self, 'decode_threads', 2))
             fps = vr.get_avg_fps()
             total_frames = len(vr)
             del vr
@@ -2289,7 +2098,7 @@ class LLMInference:
             # inside try so finally does not reference an undefined vr.
             vr = None
             try:
-                vr = VideoReader(video_path, ctx=cpu(0), num_threads=DECORD_NUM_THREADS)
+                vr = VideoReader(video_path, ctx=cpu(0), num_threads=getattr(self, 'decode_threads', 2))
                 # Get all target frames in the video batch, note: frame_indices should
                 # be sorted, as some VideoReader read orders improve efficiency
                 frame_indices.sort()
@@ -2498,17 +2307,6 @@ class LLMInference:
         factor = factor or self.QWEN_VL_SIZE_FACTOR
         return max(factor, int(round(value / factor)) * factor)
 
-    def _align_pil_to_factor(self, pil_img, factor=None):
-        # Align PIL image width and height to factor multiples to ensure image token
-        # count matches placeholder count sent to vLLM.
-        factor = factor or self.QWEN_VL_SIZE_FACTOR
-        w, h = pil_img.size
-        new_w = max(factor, int(round(w / factor)) * factor)
-        new_h = max(factor, int(round(h / factor)) * factor)
-        if (new_w, new_h) != (w, h):
-            pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        return pil_img
-
     def _target_size(self, w, h):
         """Scale images proportionally to target width, aligning width and height to
         multiples of 28. target_width mode: all episodes are resized to the same width
@@ -2677,9 +2475,9 @@ def main(args):
                         default=0,
                         help='Resize frames to this width while preserving aspect ratio; 0 uses scale factor.')
     parser.add_argument('--enable_thinking',
-                        choices=['auto', 'on', 'off'],
-                        default=os.environ.get('ENABLE_THINKING', 'auto'),
-                        help='Thinking policy: auto follows the model template; on enables thinking; off disables it when supported.')
+                        choices=['on', 'off', 'omit'],
+                        default='off',
+                        help='Explicit model thinking policy; omit leaves the server template unchanged.')
     parser.add_argument('--num_workers',
                          type=int,
                          default=16,
@@ -2729,18 +2527,31 @@ def main(args):
                          type=int,
                          default=1,
                          help='Total frame-generation shards; 1 disables sharding.')
-    parser.add_argument('--serving_mode',
-                         type=str,
-                         default='',
-                         choices=['', 'local', 'api'],
-                         help='Model source: local OpenAI-compatible server or external API; empty infers from model name.')
     parser.add_argument('--result_path',
                          type=str,
                          default='./results',
                          help='output root for historical q_a_dict.json and run metadata')
 
 
+    if not __package__:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from dramavqa.runtime import add_execution_arguments, validate_execution_settings
+    add_execution_arguments(parser)
+    parser.add_argument('--base-url')
+    parser.add_argument('--max-tokens', type=int, default=1000)
+    parser.add_argument('--api-timeout', type=float, default=120)
+    parser.add_argument('--thinking', choices=('on', 'off'), default='off')
+    parser.add_argument('--thinking-transport', choices=('chat-template', 'enable_thinking', 'thinking'), default='chat-template')
+    parser.add_argument('--evaluation-profile', choices=('local-qwen', 'local-glm'), default='local-qwen')
+    parser.add_argument('--image-encoding', choices=('png', 'webp-lossless'), default='png')
     args = parser.parse_args(args)
+    args.base_url = args.base_url or f'http://127.0.0.1:{args.port}/v1'
+    try:
+        validate_execution_settings(args)
+        if args.max_tokens < 1 or not 0 < args.api_timeout <= 86400:
+            raise ValueError('max-tokens/api-timeout must be positive')
+    except ValueError as exc:
+        parser.error(str(exc))
     try:
         engine = LLMInference(args)
     except NoVideoAvailable as e:

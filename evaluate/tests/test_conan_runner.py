@@ -13,7 +13,9 @@ except ModuleNotFoundError:
 FIXTURE = Path(__file__).parent / "fixtures/latest_qa.json"
 
 
-def test_conan_launcher_converts_qa_and_calls_backend(tmp_path):
+def test_conan_launcher_converts_qa_and_calls_backend(tmp_path, monkeypatch):
+    monkeypatch.setenv('CONAN_FORCE_STALE', '1')
+    monkeypatch.setenv('API_MAX_TOKENS', 'invalid')
     backend = tmp_path / "Conan-Eval"
     backend.mkdir()
     (backend / "singlehop.py").write_text("# backend marker\n", encoding="utf-8")
@@ -25,6 +27,8 @@ def test_conan_launcher_converts_qa_and_calls_backend(tmp_path):
         "assert args[args.index('--max_steps') + 1] == '3'\n"
         "assert os.environ['CONAN_USE_DRAMA_QA'] == '1'\n"
         "assert os.environ['CONAN_QA_LEVEL'] == 'L3'\n"
+        "assert 'CONAN_FORCE_STALE' not in os.environ\n"
+        "assert 'API_MAX_TOKENS' not in os.environ\n"
         "qa = pathlib.Path(os.environ['CONAN_QUESTIONS_DIR']) / 'sample.json'\n"
         "data = json.loads(qa.read_text())\n"
         "assert sum(len(c['Q&A']) for c in data['single-point'].values()) == 3\n"

@@ -56,14 +56,14 @@ def test_single_point_request_and_metadata_use_text_subtitles(tmp_path, monkeypa
 
     monkeypatch.setattr(sampler, 'LLMInference', RecordingEvaluator)
     monkeypatch.setattr(sampler, 'OpenAI', lambda **kwargs: SimpleNamespace())
-    monkeypatch.setattr(sampler, 'THINK_MODE', thinking)
     # Old experiment environment switches cannot alter the fixed text input policy.
     monkeypatch.setenv('ABLATE_BURN_SUBTITLE', '1')
     monkeypatch.setenv('ABLATE_NO_SUBTITLE', '1')
-    args = ['--drama', 'sample', '--model_name', 'fixture', '--serving_mode', 'local',
+    args = ['--drama', 'sample', '--model_name', 'fixture',
             '--question_path', str(qa), '--image_path', str(image_root),
             '--result_path', str(tmp_path / 'results'), '--use_render_info',
-            '--sample_frames', '2', '--target_width', '112', '--level', 'L3', '--num_workers', '1']
+            '--sample_frames', '2', '--target_width', '112', '--level', 'L3', '--num_workers', '1',
+            '--thinking', 'on' if thinking else 'off']
     sampler.main(args + (['--parallel'] if parallel else []))
     assert len(requests) == 1
     system = requests[0][0]['content']

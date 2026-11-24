@@ -1,7 +1,8 @@
 import base64
 import io
 import unittest
-from PIL import Image
+from PIL import Image, features
+import pytest
 from MultiPointEvalOpen.pool_config import image_part, load_profile, request_kwargs
 
 class PoolPolicyTests(unittest.TestCase):
@@ -12,26 +13,27 @@ class PoolPolicyTests(unittest.TestCase):
         self.assertEqual((r['temperature'], r['top_p']), (0.1, 0.01))
         self.assertNotIn('extra_body', request_kwargs(p, 'model', [], 4000, 'omit'))
 
-    def test_lossless_pixels_and_alignment(self):
-        image = Image.new('RGB', (392, 224), (13, 71, 129))
-        for name, size in [('local-qwen', (384, 224)), ('local-glm', (392, 224))]:
-            for encoding in ('png', 'webp-lossless'):
-                part = image_part(image, load_profile(name)['alignment_factor'], encoding)
-                data = base64.b64decode(part['image_url']['url'].split(',')[1])
-                with Image.open(io.BytesIO(data)) as actual:
-                    self.assertEqual(actual.size, size)
-                    self.assertEqual(actual.convert('RGB').getpixel((0, 0)), (13, 71, 129))
+
+@pytest.mark.parametrize('encoding', ['png', 'webp-lossless'])
+def test_lossless_pixels_and_alignment(encoding):
+    if encoding == 'webp-lossless' and not features.check('webp'):
+        pytest.skip('Pillow needs WebP codec support')
+    image = Image.new('RGB', (392, 224), (13, 71, 129))
+    for name, size in [('local-qwen', (384, 224)), ('local-glm', (392, 224))]:
+        part = image_part(image, load_profile(name)['alignment_factor'], encoding)
+        data = base64.b64decode(part['image_url']['url'].split(',')[1])
+        with Image.open(io.BytesIO(data)) as actual:
+            assert actual.size == size
+            assert actual.convert('RGB').getpixel((0, 0)) == (13, 71, 129)
 
 def test_multihop_policy_forwarding():
-    from types import SimpleNamespace
     from pathlib import Path
-    from dramavqa.cli import engine_command
+    from dramavqa.cli import build_parser, engine_command
     for task in ('multi-point', 'multi-hop'):
-        args = SimpleNamespace(task=task, command='run', drama='demo', image_root=Path('images'),
-            output_dir=Path('out'), level='L3', sample_frames=8, target_width=392,
-            model='model', base_url='http://localhost/v1', num_workers=1, max_tokens=4000,
-            api_timeout=120, evaluation_profile='local-glm', model_thinking='off',
-            image_encoding='png', thinking_transport='chat-template')
+        args = build_parser().parse_args(['run', '--task', task, '--drama', 'demo',
+            '--image-root', 'images', '--output-dir', 'out', '--level', 'L3',
+            '--model', 'model', '--max-tokens', '4000', '--temperature', '0.1',
+            '--evaluation-profile', 'local-glm'])
         cmd = engine_command(args, Path('qa.json'))
         assert cmd[cmd.index('--evaluation-profile') + 1] == 'local-glm'
         assert cmd[cmd.index('--model-thinking') + 1] == 'off'

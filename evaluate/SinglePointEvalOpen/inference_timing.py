@@ -45,7 +45,7 @@ def _append_event(engine, key, qa, started_at, elapsed_s, outcome, error):
         'question_fingerprint': question_fingerprint(qa or {}),
         'model': engine.model_name,
         'result_model': getattr(engine, 'short_model_name', engine.model_name),
-        'serving_mode': getattr(engine, 'serving_mode', None),
+        'base_url': getattr(engine, 'base_url', None),
         'drama': engine.drama,
         'level': engine.level,
         'sample_frames': engine.sample_frames,
