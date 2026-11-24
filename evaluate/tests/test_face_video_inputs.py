@@ -1,6 +1,7 @@
 """Face-video sampling has no optional source switch or face-redrawing path."""
 import json
 from pathlib import Path
+from PIL import ImageFont
 
 import numpy as np
 import pytest
@@ -67,8 +68,7 @@ def test_save_256_face_frames_without_fonts_or_face_metadata(tmp_path, monkeypat
     def no_fonts(*args, **kwargs):
         pytest.fail('Text-subtitle face frames must not load a rendering font')
 
-    monkeypatch.setattr(sampler, 'load_render_font', no_fonts)
-    monkeypatch.setattr(sampler.ImageFont, 'truetype', no_fonts)
+    monkeypatch.setattr(ImageFont, 'truetype', no_fonts)
     # A stray face metadata file must not be read or used to redraw existing labels.
     face = tmp_path / 'face_data'
     face.mkdir()
@@ -80,8 +80,6 @@ def test_save_256_face_frames_without_fonts_or_face_metadata(tmp_path, monkeypat
     engine = sampler.LLMInference.__new__(sampler.LLMInference)
     engine.target_width = 0
     engine.scale_factor = 1
-    engine.render_subtitle = False
-    engine.subtitle_text = True
     engine._get_drama_root = lambda _episode: str(tmp_path)
     frames = np.full((256, 28, 28, 3), (17, 79, 131), dtype=np.uint8)
     output = tmp_path / 'images/0001-window'

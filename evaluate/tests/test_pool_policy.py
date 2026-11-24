@@ -28,7 +28,7 @@ def test_multihop_policy_forwarding():
     from dramavqa.cli import engine_command
     for task in ('multi-point', 'multi-hop'):
         args = SimpleNamespace(task=task, command='run', drama='demo', image_root=Path('images'),
-            output_dir=Path('out'), level='L3', sample_frames=8, target_width=392, subtitles='text',
+            output_dir=Path('out'), level='L3', sample_frames=8, target_width=392,
             model='model', base_url='http://localhost/v1', num_workers=1, max_tokens=4000,
             api_timeout=120, evaluation_profile='local-glm', model_thinking='off',
             image_encoding='png', thinking_transport='chat-template')

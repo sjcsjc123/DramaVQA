@@ -114,30 +114,8 @@ except ImportError:
 # single thread reduces processing time to 42 seconds, thus converging the thread count.
 DECORD_NUM_THREADS = int(os.environ.get('DECORD_NUM_THREADS', '2'))
 from collections import defaultdict
-from PIL import Image, ImageFont, ImageDraw
+from PIL import Image
 
-
-def load_render_font(size):
-    """Use bundled Chinese/English fonts, with an optional user override."""
-    fonts = Path(__file__).parent / 'fonts'
-    candidates = [
-        (os.environ.get('EVAL_FONT_PATH'), 0),
-        (fonts / 'NotoSansCJK-Regular.ttc', 2),  # Simplified Chinese face in the collection.
-        (fonts / 'NotoSans-Regular.ttf', 0),
-        ('./fonts/SimHei.ttf', 0),
-        (fonts / 'SimHei.ttf', 0),
-        ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 0),
-    ]
-    for path, index in candidates:
-        if path and os.path.isfile(path):
-            try:
-                return ImageFont.truetype(str(path), size, index=index)
-            except (OSError, ImportError):
-                pass
-    raise RuntimeError(
-        'No usable font found. Reinstall the package with its bundled fonts, '
-        'or set EVAL_FONT_PATH to a font file.'
-    )
 
 try:
     from openai import OpenAI, DefaultHttpxClient
@@ -216,30 +194,14 @@ DRAMA_NAME_MAP = {
 }
 
 
-# Subtitle source description: in two modes, the visual content differs, so the model
-# must be explicitly informed. For the burned-in mode, dialogue appears at the bottom of
-# the frame and must be prompted to look there; otherwise, it may be overlooked. In the
-# text mode, there are no subtitles on screen, and dialogue is provided as text
-# immediately following each frame. Incorrect input could mislead the model (causing it
-# to search for a non-existent subtitle on the screen).
-SUBTITLE_DESC_BURN = "These are the frames of a video, with subtitles rendered onto the images."
-SUBTITLE_DESC_TEXT = ("These are the frames of a video. The subtitle line for each frame is "
-                      "provided as text right after that frame.")
-
-# SUBTITLE_TEXT_MODE=1 indicates that subtitles are not burned-in and are sent as text
-# alongside the image (corresponding to --subtitle_text). This is dynamically set by
-# LLMInference.__init__ to ensure consistency between the system prompt and visual
-# content.
-SUBTITLE_TEXT_MODE = False
-
-
-def _subtitle_desc():
-    return SUBTITLE_DESC_TEXT if SUBTITLE_TEXT_MODE else SUBTITLE_DESC_BURN
+# Dialogue is always supplied as text immediately after its corresponding image.
+SUBTITLE_DESCRIPTION = ("These are the frames of a video. The subtitle line for each frame is "
+                        "provided as text right after that frame.")
 
 
 # system prompt header (task description), experiment 1/3 shared.
 def _message_system_head():
-    return (_subtitle_desc() +
+    return (SUBTITLE_DESCRIPTION +
             "\nSelect the best answer to the following single-choice question based on the video.")
 
 
@@ -267,7 +229,7 @@ Answer: <letter>"""
 # use model with thinking: allows reasoning, but must end with fixed format for
 # consistent regex extraction. Enable with THINK_MODE=1.
 def _think_prompt():
-    return (_subtitle_desc() +
+    return (SUBTITLE_DESCRIPTION +
             "\nPlease perform a detailed reasoning based on the provided video frames to answer "
             "the following single-choice question, selecting the best option, and provide your "
             "final response strictly in the format: 'Final Answer: <letter>'.")
@@ -294,7 +256,7 @@ def resolve_system_content(system_content):
 
 
 def _group_message_system_head():
-    return (_subtitle_desc() + """
+    return (SUBTITLE_DESCRIPTION + """
 Every 4 consecutive frames are tiled into one 2x2 composite image, in playback order:
 - Top row, left to right: frames 1 and 2;
 - Bottom row, left to right: frames 3 and 4.
@@ -621,8 +583,6 @@ class LLMInference:
         self.sample_frames = args.sample_frames
         self.scale_factor = args.scale_factor
         self.target_width = getattr(args, 'target_width', 0) or 0
-        self.subtitle_text = getattr(args, 'subtitle_text', False)
-        self.render_subtitle = args.render_subtitle
         image_root = Path(args.image_path)
         # Accept either the output root or an expanded historical img_data path.
         # Checking path components avoids mistaking a parent directory that merely
@@ -1174,15 +1134,9 @@ class LLMInference:
         return q_a_dict
 
     def _results_dirname(self):
-        """Root directory of image files, at the first level. New rule (target_width mode):
-        results.w<width>_<sub|nosub> - Width is unified, scale_factor is no longer
-        valid; use actual width instead. - Subtitle burning affects image content, must
-        be reflected in directory; otherwise sub/nosub modes will conflict. Old rule
-        (scale_factor mode): results.<scale> remains unchanged, allowing previous images
-        to be reused without being overwritten."""
+        """Keep the existing cache paths for face frames with separate text subtitles."""
         if self.target_width:
-            suffix = 'sub' if self.render_subtitle else 'nosub'
-            return 'results.w{}_{}'.format(self.target_width, suffix)
+            return 'results.w{}_nosub'.format(self.target_width)
         return 'results.{}'.format(self.scale_factor)
 
     def _resolve_versioned_dir(self, parent_dir, step_key, fallback_keyword=None):
@@ -1215,7 +1169,7 @@ class LLMInference:
     def dump_run_meta(self, qa_path, system_content):
         """Write a run_meta.json file in the result directory, recording key configuration
         for this run. q_a_dict.json only stores answers, and cannot be used to
-        identify the thinking policy or rendered subtitle settings; therefore,
+        identify the thinking policy or subtitle input format; therefore,
         the original prompt text and its MD5 hash are saved
         together to facilitate verification and cross-comparison. Each run is covered
         and written, with a constant size, not growing with the number of questions."""
@@ -1255,8 +1209,7 @@ class LLMInference:
             'group_2x2': getattr(self, 'group_2x2', False),
             'group_4x4': getattr(self, 'group_4x4', False),
             'use_render_info': self.use_render_info,
-            'render_subtitle': self.render_subtitle,
-            'subtitle_text': self.subtitle_text,
+            'subtitle_format': 'text',
             'video_source': 'face_video',
             'image_path': self.image_path,
             'question_path': self.question_path,
@@ -1411,8 +1364,7 @@ class LLMInference:
 
             for idx in selected_indices:
                 frame = base64_frames[idx]
-                # Subtitles are already burned into the image during generation, so no
-                # further rendering is needed
+                # Face annotations are already present; dialogue follows as text.
                 frame = self._align_pil_to_factor(frame)
                 buffered = io.BytesIO()
                 frame.save(buffered, format="PNG")
@@ -1420,7 +1372,7 @@ class LLMInference:
                 frame_base64 = base64.b64encode(image_bytes).decode('utf-8')
                 msg[1]["content"].append(
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}})
-                # When subtitles are not burned in, send the dialogue text immediately
+                # Send dialogue text immediately
                 # after the image, maintaining alignment between text and image.
                 if sub_map:
                     sub_text = self.build_subtitle_text(sub_map, frame_names[idx])
@@ -1711,22 +1663,7 @@ class LLMInference:
         for idx in selected_indices:
             frame = base64_frames[idx]
 
-            # ABLATE_BURN_SUBTITLE=1: Burn subtitles.json text to screen during online
-            # Render burned-in subtitles when requested.
-            # experiments
-            if os.environ.get('ABLATE_BURN_SUBTITLE') == '1':
-                if not hasattr(self, '_ablate_sub_info'):
-                    clip_dir = os.path.dirname(image_file_path.rstrip('/'))
-                    self._ablate_sub_info = self.load_burn_subtitle_info(image_file_path) if True else {}
-                    # Refresh each clip (using image_file_path as cache key)
-                if not hasattr(self, '_ablate_sub_cache_key') or self._ablate_sub_cache_key != image_file_path:
-                    self._ablate_sub_cache_key = image_file_path
-                    self._ablate_sub_info = self.load_burn_subtitle_info(image_file_path)
-                if self._ablate_sub_info:
-                    frame = self._render_subtitle_on_pil(frame, frame_names[idx], self._ablate_sub_info)
-
-            # Subtitles are already burned into the image during generation, so no
-            # further rendering is needed
+            # Face annotations are already present; dialogue follows as text.
             frame = self._align_pil_to_factor(frame)
             buffered = io.BytesIO()
             frame.save(buffered, format="PNG")
@@ -1734,7 +1671,7 @@ class LLMInference:
             frame_base64 = base64.b64encode(image_bytes).decode('utf-8')
             msg[1]["content"].append(
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}})
-            # When subtitles are not burned in, send the dialogue text immediately after
+            # Send dialogue text immediately after
             # the image, maintaining alignment between text and image.
             if sub_map:
                 sub_text = self.build_subtitle_text(sub_map, frame_names[idx])
@@ -2073,7 +2010,7 @@ class LLMInference:
     def count_jpg_files(self, sampled_img_path):
         image_extensions = ('.jpg', '.jpeg', '.png')
         # Exclude .tmp intermediate files: Multiple tasks may share the same image
-        # directory (which is determined only by target_width/render_subtitle and
+        # directory (which is determined only by target_width and
         # unrelated to SYS_PROMPT_MODE), including others' temporary files could cause
         # incorrect "whether sampling is complete" judgment.
         return sum(
@@ -2416,18 +2353,14 @@ class LLMInference:
         return sample_res
 
     def render(self, sample_res, save_path):
-        def process_single_frame(im_id, images, frame_indices, subtitle_data,
+        def process_single_frame(im_id, images, frame_indices,
                                  save_render_path, season, episode):
-            """Save a face-video frame, resizing and optionally burning subtitles."""
+            """Save a face-video frame without changing its existing annotations."""
             frame = images[im_id]
             if self.target_width or self.scale_factor != 1:
                 frame = self.resize_img_pil(frame)
 
             frame_id = frame_indices[im_id]
-
-            # Render Subtitles
-            if self.render_subtitle == True:
-                frame = self.render_subtitles(frame, subtitle_data, frame_id)
 
             # Save Image
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
@@ -2452,18 +2385,16 @@ class LLMInference:
             episode = sea_epi.split('_')[1].zfill(4)
 
             subtitle_data = None
-            # When flashing is disabled but subtitle text is required, still need to
-            # read subtitle to export mapping file
-            if self.render_subtitle or self.subtitle_text:
-                subtitle_path = os.path.join(drama_root, 'subtitle_data')
-                try:
-                    subtitle_dir = self._resolve_versioned_dir(subtitle_path, 'subtitle_checking_step')
-                    subtitle_file_path = os.path.join(subtitle_dir or subtitle_path, episode + '.json')
-                    with open(subtitle_file_path, 'r', encoding='utf-8') as file:
-                        subtitle_data = json.load(file)
-                except (FileNotFoundError, KeyError) as e:
-                    print(f'WARNING: subtitle not found for {self.drama} episode {episode}: {e}')
-                    subtitle_data = None
+            # Export dialogue text separately from the face-video frames.
+            subtitle_path = os.path.join(drama_root, 'subtitle_data')
+            try:
+                subtitle_dir = self._resolve_versioned_dir(subtitle_path, 'subtitle_checking_step')
+                subtitle_file_path = os.path.join(subtitle_dir or subtitle_path, episode + '.json')
+                with open(subtitle_file_path, 'r', encoding='utf-8') as file:
+                    subtitle_data = json.load(file)
+            except (FileNotFoundError, KeyError) as e:
+                print(f'WARNING: subtitle not found for {self.drama} episode {episode}: {e}')
+                subtitle_data = None
 
             save_render_path = os.path.join(save_path, 'render')
             os.makedirs(save_render_path, exist_ok=True)
@@ -2475,7 +2406,6 @@ class LLMInference:
                 worker = partial(process_single_frame,
                                 images=images,
                                 frame_indices=frame_indices,
-                                subtitle_data=subtitle_data,
                                 save_render_path=save_render_path,
                                 season=season,
                                 episode=episode)
@@ -2486,38 +2416,28 @@ class LLMInference:
                 # an incomplete render/ directory.
                 list(executor.map(worker, range(images.shape[0])))
 
-            # nosub + subtitle mode: store "image filename -> subtitle" mapping to disk,
-            # during inference, send dialogue text as text alongside image in sequence
-            if self.subtitle_text and not self.render_subtitle:
-                sub_map = {}
-                for im_id in range(images.shape[0]):
-                    frame_id = frame_indices[im_id]
-                    if 'S' in save_render_path.split('/')[-2]:
-                        fname = f"{season}_{episode}_{frame_id}.jpg"
-                    else:
-                        fname = f"{episode}_{frame_id}.jpg"
-                    sub_map[fname] = self.lookup_subtitle(subtitle_data, frame_id)
-                map_path = os.path.join(save_path, 'subtitles.json')
-                old = {}
-                if os.path.exists(map_path):
-                    try:
-                        with open(map_path, 'r', encoding='utf-8') as fr:
-                            old = json.load(fr)
-                    except (json.JSONDecodeError, OSError):
-                        old = {}
-                old.update(sub_map)
-                atomic_dump_json(old, map_path, indent=2)
+            # Store dialogue by image filename for image-then-text inference.
+            sub_map = {}
+            for im_id in range(images.shape[0]):
+                frame_id = frame_indices[im_id]
+                if 'S' in save_render_path.split('/')[-2]:
+                    fname = f"{season}_{episode}_{frame_id}.jpg"
+                else:
+                    fname = f"{episode}_{frame_id}.jpg"
+                sub_map[fname] = self.lookup_subtitle(subtitle_data, frame_id)
+            map_path = os.path.join(save_path, 'subtitles.json')
+            old = {}
+            if os.path.exists(map_path):
+                try:
+                    with open(map_path, 'r', encoding='utf-8') as fr:
+                        old = json.load(fr)
+                except (json.JSONDecodeError, OSError):
+                    old = {}
+            old.update(sub_map)
+            atomic_dump_json(old, map_path, indent=2)
 
     def load_subtitle_map(self, image_file_path):
-        """Read the mapping from image name to subtitle text (nosub + subtitle_text mode).
-        Images are located in <clip>/render/, and the mapping file is in
-        <clip>/subtitles.json. When ABLATE_NO_SUBTITLE=1, return an empty mapping for
-        "only visuals, no subtitles" experiments (to align with old code path, which did
-        not include subtitle injection)."""
-        if os.environ.get('ABLATE_NO_SUBTITLE') == '1':
-            return {}
-        if not (self.subtitle_text and not self.render_subtitle):
-            return {}
+        """Read the dialogue text associated with each sampled face-video frame."""
         map_path = os.path.join(os.path.dirname(image_file_path.rstrip('/')), 'subtitles.json')
         try:
             with open(map_path, 'r', encoding='utf-8') as fr:
@@ -2525,21 +2445,6 @@ class LLMInference:
         except (FileNotFoundError, json.JSONDecodeError, OSError):
             return {}
 
-    def load_burn_subtitle_info(self, image_file_path):
-        """Convert subtitles.json to the structure expected by _render_subtitle_on_pil. Its
-        image-name keys and text values are reshaped into
-        speaker_info[image_stem]["text"]."""
-        map_path = os.path.join(os.path.dirname(image_file_path.rstrip('/')), 'subtitles.json')
-        try:
-            with open(map_path, 'r', encoding='utf-8') as fr:
-                raw = json.load(fr)
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            return {}
-        info = {}
-        for name, text in raw.items():
-            text = (text or '').strip()
-            info[os.path.splitext(name)[0]] = {'text': text} if text else {}
-        return info
 
     def build_subtitle_text(self, sub_map, frame_name_entry):
         'Format the subtitle text corresponding to the current image; return empty string if no subtitle.'
@@ -2567,90 +2472,6 @@ class LLMInference:
                 return ''
         return ''
 
-    def render_subtitles(self, frame, subtitle_data, frame_id):
-        if not subtitle_data:
-            return frame
-        for sub_key, info in subtitle_data['object_list'].items():
-            start_frame = info['start_frame']
-            end_frame = info['end_frame']
-            if start_frame <= int(frame_id) <= end_frame:
-                sub_content = info['text']
-                if sub_content:
-                    frame = self.render_subtitle_impl(frame, sub_content)
-                return frame
-            # object_list is sorted by frame number ascending; if subtitle start frame
-            # exceeds current frame, terminate early
-            elif int(frame_id) < start_frame:
-                return frame
-        return frame
-
-    def _render_subtitle_on_pil(self, pil_img, frame_name_entry, speaker_info):
-        'Render subtitle text on a PIL Image, supporting single frame and grouped frames (2x2/4x4).'
-        pil_img = pil_img.copy()
-        img_w, img_h = pil_img.size
-
-        if isinstance(frame_name_entry, list):
-            if self.group_4x4:
-                grid_cols, grid_rows = 4, 4
-            elif self.group_2x2:
-                grid_cols, grid_rows = 2, 2
-            else:
-                grid_cols, grid_rows = int(len(frame_name_entry) ** 0.5), int(len(frame_name_entry) ** 0.5)
-            sub_w = img_w // grid_cols
-            sub_h = img_h // grid_rows
-            for sub_idx, sub_frame_name in enumerate(frame_name_entry):
-                speaker_key = sub_frame_name[:-4]
-                if speaker_info.get(speaker_key, {}) != {}:
-                    text = speaker_info[speaker_key]["text"]
-                    row = sub_idx // grid_cols
-                    col = sub_idx % grid_cols
-                    region_x = col * sub_w
-                    region_y = row * sub_h
-                    self._draw_text_on_pil(pil_img, text, region_x, region_y, sub_w, sub_h)
-        else:
-            speaker_key = frame_name_entry[:-4]
-            if speaker_info.get(speaker_key, {}) != {}:
-                text = speaker_info[speaker_key]["text"]
-                self._draw_text_on_pil(pil_img, text, 0, 0, img_w, img_h)
-
-        return pil_img
-
-    def _draw_text_on_pil(self, pil_img, text, region_x, region_y, region_w, region_h):
-        'Render a subtitle centered at the bottom of a specified region on an PIL Image with a border.'
-        draw = ImageDraw.Draw(pil_img)
-        font_size = self._subtitle_font_size(region_w)
-        try:
-            font = load_render_font(font_size)
-        except IOError:
-            font = ImageFont.load_default()
-
-        lines = self._wrap_text_to_width(text, font, int(region_w * 0.96), draw)
-        line_sizes = []
-        total_height = 0
-        line_gap = max(2, int(font_size * 0.25))
-        for line in lines:
-            bbox = draw.textbbox((0, 0), line, font=font)
-            text_w = bbox[2] - bbox[0]
-            text_h = bbox[3] - bbox[1]
-            line_sizes.append((text_w, text_h))
-            total_height += text_h + line_gap
-        total_height -= line_gap
-
-        margin_bottom = max(3, int(font_size * 0.35))
-        start_y = region_y + region_h - total_height - margin_bottom
-        start_y = max(start_y, region_y)
-
-        stroke_width = max(1, int(font_size / 12))
-        y_offset = start_y
-        for i, line in enumerate(lines):
-            text_w, text_h = line_sizes[i]
-            x = region_x + (region_w - text_w) // 2
-            for dx in (-stroke_width, 0, stroke_width):
-                for dy in (-stroke_width, 0, stroke_width):
-                    if dx != 0 or dy != 0:
-                        draw.text((x + dx, y_offset + dy), line, fill=(0, 0, 0), font=font)
-            draw.text((x, y_offset), line, fill=(255, 255, 255), font=font)
-            y_offset += text_h + line_gap
 
     # Subtitle font size: after uniforming width to target_width, the calculated font
     # size becomes too small (392px results in only 10px), old code using max(...,20) as
@@ -2659,121 +2480,6 @@ class LLMInference:
     # lines occupy only 21%~27% of screen height, balancing readability and overlap.
     SUBTITLE_FONT_SIZE_AT_392 = 16
 
-    def _subtitle_font_size(self, img_w):
-        if self.target_width:
-            # Scale font size proportionally to 392 baseline, ensuring consistent sizing
-            # across different widths
-            size = int(round(self.SUBTITLE_FONT_SIZE_AT_392 * img_w / 392.0))
-            return max(size, 12)
-        return max(int(50 * (img_w / 1920.0)), 20)
-
-    def _wrap_text_to_width(self, text, font, max_width, draw=None):
-        """Break the subtitle into lines based on pixel width. The original implementation
-        only breaks lines without width constraints, causing the subtitle to be
-        truncated when it exceeds the width (approximately 24 characters for 392px
-        width). Chinese characters do not have spaces for word segmentation, so they are
-        measured character by character; English text is broken by spaces to avoid
-        splitting words."""
-        def measure(s):
-            if draw is not None:
-                bbox = draw.textbbox((0, 0), s, font=font)
-            else:
-                bbox = font.getbbox(s)
-            return bbox[2] - bbox[0]
-
-        lines = []
-        for raw_line in (text.split('\n') if '\n' in text else [text]):
-            if not raw_line:
-                continue
-            if measure(raw_line) <= max_width:
-                lines.append(raw_line)
-                continue
-            cur = ''
-            for ch in raw_line:
-                trial = cur + ch
-                if cur and measure(trial) > max_width:
-                    # Prefer breaking lines at spaces to avoid splitting English words
-                    if ' ' in cur.strip() and ch != ' ':
-                        cut = cur.rstrip().rfind(' ')
-                        if cut > 0:
-                            lines.append(cur[:cut])
-                            cur = cur[cut + 1:] + ch
-                            continue
-                    lines.append(cur)
-                    cur = ch
-                else:
-                    cur = trial
-            if cur:
-                lines.append(cur)
-        return lines or ['']
-
-    def render_subtitle_impl(self, frame, sub_content):
-        """Render a Chinese subtitle (multi-line) onto a frame. Args: frame (np.ndarray):
-        OpenCV format image (BGR or RGB, but recommended to pass in RGB) sub_content
-        (str): Subtitle content, can include newlines Returns: np.ndarray: The new image
-        with the subtitle added (same channel order as input)"""
-        # Assume frame is RGB (if not, ensure compatibility with PIL)
-        h, w = frame.shape[:2]
-        scale = w / 1920.0
-        font_size = self._subtitle_font_size(w)
-        try:
-            font = load_render_font(font_size)
-        except IOError:
-            # Fall back to default font if SimHei is not found (may not support Chinese)
-            font = ImageFont.load_default()
-
-        # Convert to PIL Image (note: PIL uses RGB format)
-        if frame.shape[2] == 3:
-            pil_img = Image.fromarray(frame)
-        else:
-            pil_img = Image.fromarray(frame, mode='L')  # Grayscale image processing (usually not used)
-
-        draw = ImageDraw.Draw(pil_img)
-
-        # Supports multi-line subtitles: automatically wraps to fit screen width, with
-        # 4% margin to avoid edge contact
-        max_text_width = int(w * 0.96)
-        lines = self._wrap_text_to_width(sub_content, font, max_text_width, draw)
-
-        # Calculate text size per line
-        line_sizes = []
-        max_width = 0
-        total_height = 0
-        line_gap = max(2, int(font_size * 0.25))
-        for line in lines:
-            bbox = draw.textbbox((0, 0), line, font=font)
-            text_w = bbox[2] - bbox[0]
-            text_h = bbox[3] - bbox[1]
-            line_sizes.append((text_w, text_h))
-            max_width = max(max_width, text_w)
-            total_height += text_h + line_gap  # Line spacing
-
-        total_height -= line_gap  # Last line does not require extra spacing
-
-        # Subtitle position: centered at bottom (with some margin)
-        margin_bottom = max(4, int(font_size * 0.5))
-        start_y = h - total_height - margin_bottom
-        start_y = max(start_y, 0)  # Prevent text from going beyond the top of the image
-
-        # Draw each row with a black outline for better readability
-        stroke_width = max(1, int(font_size / 12))
-        y_offset = start_y
-        for i, line in enumerate(lines):
-            text_w, text_h = line_sizes[i]
-            x = (w - text_w) // 2
-
-            # Draw the black outline first (multiple offsets to simulate a thick border)
-            for dx in (-stroke_width, 0, stroke_width):
-                for dy in (-stroke_width, 0, stroke_width):
-                    if dx != 0 or dy != 0:
-                        draw.text((x + dx, y_offset + dy), line, fill=(0, 0, 0), font=font)
-
-            # Then draw the white text
-            draw.text((x, y_offset), line, fill=(255, 255, 255), font=font)
-            y_offset += text_h + line_gap
-
-        # Convert back to numpy array
-        return np.array(pil_img)
 
     def time_str_to_seconds(self, time_str):
         "Convert a time string in 'HH:MM:SS.mmm' format to seconds (float)"
@@ -2970,18 +2676,6 @@ def main(args):
                         type=int,
                         default=0,
                         help='Resize frames to this width while preserving aspect ratio; 0 uses scale factor.')
-    parser.add_argument('--subtitle_text',
-                         action='store_true',
-                         default=False,
-                         help='Send text subtitles alongside frames when subtitles are not burned in.')
-    parser.add_argument('--render_subtitle',
-                         action='store_true',
-                         default=True,
-                         help='Burn subtitles into sampled frames (enabled by default).')
-    parser.add_argument('--no_render_subtitle',
-                         dest='render_subtitle',
-                         action='store_false',
-                         help='Disable subtitle burning.')
     parser.add_argument('--enable_thinking',
                         choices=['auto', 'on', 'off'],
                         default=os.environ.get('ENABLE_THINKING', 'auto'),

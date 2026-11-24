@@ -51,7 +51,7 @@ def command(args: argparse.Namespace, qa_path: Path) -> list[str]:
         "--target_width", str(args.target_width),
         "--level", "L3", "--model_name", "frame-preparation",
         "--serving_mode", "local", "--only_gen_img",
-        "--no_render_subtitle", "--subtitle_text", "--use_render_info",
+        "--use_render_info",
     ]
     return cmd
 

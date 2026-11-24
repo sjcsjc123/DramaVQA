@@ -112,7 +112,6 @@ def build_parser():
         p.add_argument("--sample-frames", type=int, default=8)
         p.add_argument("--target-width", type=int, default=392)
         p.add_argument("--level", choices=("L3", "L4", "L5", "L6"))
-        p.add_argument("--subtitles", choices=("text", "burn", "none"), default="text")
         p.add_argument('--evaluation-profile', choices=('local-qwen', 'local-glm'), default='local-qwen')
         p.add_argument('--model-thinking', choices=('on', 'off', 'omit'), default='off')
         p.add_argument('--thinking-transport', choices=('chat-template', 'enable_thinking', 'thinking'), default='chat-template')
@@ -139,8 +138,7 @@ def frame_root(args):
 
 
 def image_data_root(args):
-    suffix = "_sub" if args.subtitles == "burn" else "_nosub"
-    return frame_root(args) / args.level / str(args.sample_frames) / f"results.w{args.target_width}{suffix}" / "img_data"
+    return frame_root(args) / args.level / str(args.sample_frames) / f"results.w{args.target_width}_nosub" / "img_data"
 
 
 def engine_command(args, qa):
@@ -179,10 +177,6 @@ def engine_command(args, qa):
         "--level", args.level, "--num_workers", str(args.num_workers), "--use_render_info"]
     if args.command == "prepare":
         result += ["--only_gen_img", "--video_path", str(args.video_root)]
-    if args.subtitles != "burn":
-        result.append("--no_render_subtitle")
-    if args.subtitles == "text":
-        result.append("--subtitle_text")
     return result
 
 
@@ -197,8 +191,8 @@ def main(argv=None):
         parser.error("limit must be nonnegative; other numeric limits must be positive")
     multi = args.task in ("multi-point", "multi-hop")
     args.level = args.level or "L3"
-    if multi and (args.level != "L3" or args.subtitles != "text"):
-        parser.error("multi-scene evaluation uses L3 and text subtitles")
+    if multi and args.level != "L3":
+        parser.error("multi-scene evaluation uses L3")
     if multi and args.command == "prepare" and args.image_root:
         parser.error("multi-scene preparation writes OUTPUT_DIR/images; omit --image-root")
     if args.thinking == "on" and (multi or args.backend == "conan"):
@@ -231,7 +225,7 @@ def run_one(args, parser):
     encoded = json.dumps(data, ensure_ascii=False, sort_keys=True).encode()
     fingerprint = {"qa_sha256": hashlib.sha256(encoded).hexdigest(), "task": args.task,
         "drama": args.drama, "level": args.level, "sample_frames": args.sample_frames,
-        "target_width": args.target_width, "subtitles": args.subtitles, "mode": None,
+        "target_width": args.target_width, "subtitles": "text", "mode": None,
         "video_source": "face_video", "questions": selected["questions"]}
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest = args.output_dir / "input_manifest.json"
@@ -250,6 +244,8 @@ def run_one(args, parser):
                         "max_tokens": args.max_tokens, "base_url": args.base_url,
                         "prompt_mode": args.prompt_mode, "think_mode": env["THINK_MODE"],
                         "enable_thinking": env.get("ENABLE_THINKING", "auto")}
+        if args.task == "single-point" and args.backend == "openai":
+            run_settings["prompt_revision"] = "text-subtitles-v1"
         run_manifest = args.output_dir / "run_manifest.json"
         if run_manifest.exists() and json.loads(run_manifest.read_text()) != run_settings:
             parser.error("output directory belongs to a different model/run; use a new --output-dir")
